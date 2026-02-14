@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+  extensions = [postgis]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  password  String
+  seller    Seller?
+  orders    Order[]
+  claimedSamples Sample[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Seller {
+  id              String    @id @default(uuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id])
+  name            String
+  description     String
+  latitude        Float
+  longitude       Float
+  pickupDays      String?
+  pickupStartTime String?
+  pickupEndTime   String?
+  products        Product[]
+  stories         Story[]
+  samples         Sample[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([latitude, longitude])
+}
+
+model Product {
+  id                String   @id @default(uuid())
+  sellerId          String
+  seller            Seller   @relation(fields: [sellerId], references: [id])
+  title             String
+  description       String
+  price             Float
+  currency          String   @default("USD")
+  quantityAvailable Int      @default(1)
+  quantityLeft      Int      @default(1) // Keeping for compatibility as requested
+  images            String[]
+  primaryImage      String?
+  imageUrl          String? // Deprecated in favor of primaryImage but keeping for now
+  category          String?
+  tags              String[]
+  badges            String[]
+  pickupWindows     Json?    // Stores array of pickup windows
+  pickupLocation    Json?    // Stores location details
+  isFavorite        Boolean  @default(false)
+  orderItems        OrderItem[]
+  samples           Sample[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Story {
+  id        String   @id @default(uuid())
+  sellerId  String
+  seller    Seller   @relation(fields: [sellerId], references: [id])
+  content   String
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  label     String
+  icon      String
+  isActive  Boolean  @default(true)
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  orderNumber   String      @unique
+  status        String      @default("confirmed")
+  totalAmount   Float
+  currency      String      @default("USD")
+  customerId    String
+  customer      User        @relation(fields: [customerId], references: [id])
+  items         OrderItem[]
+  pickupData    Json?       // Store pickup summary and other metadata
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model OrderItem {
+  id         String   @id @default(uuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Int
+  price      Float
+  pickupData Json?    // Store pickup location and window details
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Sample {
+  id              String   @id @default(uuid())
+  sellerId        String
+  seller          Seller   @relation(fields: [sellerId], references: [id])
+  productId       String?
+  product         Product? @relation(fields: [productId], references: [id])
+  status          String   @default("available") // available, claimed, expired
+  pickupWindows   Json?    // Array of available pickup windows
+  expiresAt       DateTime?
+  claimedByUserId String?
+  claimedByUser   User?    @relation(fields: [claimedByUserId], references: [id])
+  claimedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
