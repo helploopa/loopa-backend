@@ -1,16 +1,17 @@
-const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.resolvers = void 0;
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const R = 3958.8; // Radius of Earth in miles
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
         Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
 };
-
-const mapProduct = (product: any, latitude: number, longitude: number) => {
+const mapProduct = (product, latitude, longitude) => {
     const distance = calculateDistance(latitude, longitude, product.seller.latitude, product.seller.longitude);
     return {
         ...product,
@@ -21,11 +22,11 @@ const mapProduct = (product: any, latitude: number, longitude: number) => {
         quantityLeft: product.quantityLeft, // Keeping for compatibility
         // Map pickupWindows from JSON or fallback to seller defaults
         pickupWindows: product.pickupWindows ? product.pickupWindows : (product.seller.pickupDays ? [{
-            days: product.seller.pickupDays,
-            startTime: product.seller.pickupStartTime,
-            endTime: product.seller.pickupEndTime,
-            formatted: `${product.seller.pickupDays} ${product.seller.pickupStartTime} - ${product.seller.pickupEndTime}`
-        }] : []),
+                days: product.seller.pickupDays,
+                startTime: product.seller.pickupStartTime,
+                endTime: product.seller.pickupEndTime,
+                formatted: `${product.seller.pickupDays} ${product.seller.pickupStartTime} - ${product.seller.pickupEndTime}`
+            }] : []),
         // Map pickupLocation from JSON or fallback to seller location
         pickupLocation: product.pickupLocation ? product.pickupLocation : {
             address: "88 Oak Ave, Willow Creek", // Placeholder address if not stored
@@ -43,18 +44,16 @@ const mapProduct = (product: any, latitude: number, longitude: number) => {
         }
     };
 };
-
-export const resolvers = {
+exports.resolvers = {
     Query: {
-        users: async (_parent: any, _args: any, context: any) => {
+        users: async (_parent, _args, context) => {
             return context.prisma.user.findMany();
         },
-        nearbyProducts: async (_parent: any, args: { location: any; category?: string }, context: any) => {
+        nearbyProducts: async (_parent, args, context) => {
             const { latitude, longitude, radius_miles } = args.location;
             const { category } = args;
-
             // Build filter object
-            const whereClause: any = {};
+            const whereClause = {};
             // If category is provided and not "all" (case insensitive), filter by it
             if (category && category.toLowerCase() !== 'all') {
                 whereClause.category = {
@@ -62,36 +61,34 @@ export const resolvers = {
                     mode: 'insensitive', // Case-insensitive matching
                 };
             }
-
             // In a real app, we would filter by distance using PostGIS here.
             // For now, fetch all and calculate distance in memory (suitable for demo dataset).
             const products = await context.prisma.product.findMany({
                 where: whereClause,
                 include: { seller: true }
             });
-
-            return products.map((product: any) => mapProduct(product, latitude, longitude)).filter((p: any) => {
+            return products.map((product) => mapProduct(product, latitude, longitude)).filter((p) => {
                 // Optional: Filter by radius here if we want to simulate the "nearby" behavior strictly
                 return p.seller.distanceMiles <= (radius_miles || 10000);
             });
         },
-        categories: async (_parent: any, _args: any, context: any) => {
+        categories: async (_parent, _args, context) => {
             return context.prisma.category.findMany();
         },
-        product: async (_parent: any, args: { id: string }, context: any) => {
+        product: async (_parent, args, context) => {
             const product = await context.prisma.product.findUnique({
                 where: { id: args.id },
                 include: { seller: true }
             });
-
-            if (!product) return null;
+            if (!product)
+                return null;
             // For single product, we might need user's location to calculate distance. 
             // If not provided, we can pass 0,0 or handle it gracefully. 
             // For now, let's assume 0,0 or null distance if location context is missing.
             // Ideally, we'd pass location context or just use seller location as base.
             return mapProduct(product, product.seller.latitude, product.seller.longitude); // Sets distance to 0
         },
-        order: async (_parent: any, args: { id: string }, context: any) => {
+        order: async (_parent, args, context) => {
             const order = await context.prisma.order.findUnique({
                 where: { id: args.id },
                 include: {
@@ -105,11 +102,9 @@ export const resolvers = {
                     }
                 }
             });
-
-            if (!order) return null;
-
+            if (!order)
+                return null;
             const firstName = order.customer.name?.split(' ')[0] || 'Customer';
-
             return {
                 id: order.id,
                 orderNumber: order.orderNumber,
@@ -121,7 +116,7 @@ export const resolvers = {
                     firstName,
                     greetingName: firstName
                 },
-                items: order.items.map((item: any) => ({
+                items: order.items.map((item) => ({
                     productId: item.productId,
                     title: item.product.title,
                     seller: {
@@ -140,7 +135,7 @@ export const resolvers = {
                 }
             };
         },
-        availableSampleSellers: async (_parent: any, args: { orderId: string }, context: any) => {
+        availableSampleSellers: async (_parent, args, context) => {
             // Fetch the order to get customer location context
             const order = await context.prisma.order.findUnique({
                 where: { id: args.orderId },
@@ -155,12 +150,10 @@ export const resolvers = {
                     }
                 }
             });
-
-            if (!order) throw new Error('Order not found');
-
+            if (!order)
+                throw new Error('Order not found');
             // Get the seller IDs from the order to exclude them
-            const orderSellerIds = order.items.map((item: any) => item.product.seller.id);
-
+            const orderSellerIds = order.items.map((item) => item.product.seller.id);
             // Fetch available samples from sellers (excluding order sellers)
             const samples = await context.prisma.sample.findMany({
                 where: {
@@ -174,15 +167,12 @@ export const resolvers = {
                     product: true
                 }
             });
-
             // Use first order item's seller location as reference for distance calculation
             const refLat = order.items[0]?.product?.seller?.latitude || 40.94;
             const refLng = order.items[0]?.product?.seller?.longitude || -123.63;
-
             // Format sample sellers
-            const sellers = samples.map((sample: any) => {
+            const sellers = samples.map((sample) => {
                 const distance = calculateDistance(refLat, refLng, sample.seller.latitude, sample.seller.longitude);
-
                 // Parse pickup windows from JSON or use defaults
                 const pickupWindows = sample.pickupWindows || [
                     {
@@ -210,7 +200,6 @@ export const resolvers = {
                         available: true
                     }
                 ];
-
                 return {
                     id: sample.seller.id,
                     name: sample.seller.name,
@@ -222,7 +211,6 @@ export const resolvers = {
                     pickupWindows
                 };
             });
-
             return {
                 status: 'available',
                 eligibility: {
@@ -235,7 +223,7 @@ export const resolvers = {
         },
     },
     Mutation: {
-        createCategory: async (_parent: any, args: { label: string; icon: string; isActive?: boolean; count?: number }, context: any) => {
+        createCategory: async (_parent, args, context) => {
             return context.prisma.category.create({
                 data: {
                     label: args.label,
@@ -245,7 +233,7 @@ export const resolvers = {
                 },
             });
         },
-        updateProduct: async (_parent: any, args: { id: string; input: any }, context: any) => {
+        updateProduct: async (_parent, args, context) => {
             const updatedProduct = await context.prisma.product.update({
                 where: { id: args.id },
                 data: args.input,
@@ -253,108 +241,25 @@ export const resolvers = {
             });
             return mapProduct(updatedProduct, updatedProduct.seller.latitude, updatedProduct.seller.longitude);
         },
-        updateSeller: async (_parent: any, args: { userId: string; input: any }, context: any) => {
-            const { userId, input } = args;
-            const { businessHours, features, ...sellerScalars } = input;
-
-            // Find seller by userId
-            const existing = await context.prisma.seller.findUnique({ where: { userId } });
-            if (!existing) throw new Error(`Seller not found for userId: ${userId}`);
-
-            // Update scalar fields
-            await context.prisma.seller.update({
-                where: { userId },
-                data: sellerScalars,
-            });
-
-            // Upsert business hours (one row per dayCode per seller)
-            if (businessHours && businessHours.length > 0) {
-                await Promise.all(
-                    businessHours.map((bh: { dayCode: string; startTime: string; endTime: string; isOpen?: boolean }) =>
-                        context.prisma.sellerBusinessHours.upsert({
-                            where: { sellerId_dayCode: { sellerId: existing.id, dayCode: bh.dayCode } },
-                            create: {
-                                sellerId: existing.id,
-                                dayCode: bh.dayCode,
-                                startTime: bh.startTime,
-                                endTime: bh.endTime,
-                                isOpen: bh.isOpen ?? true,
-                            },
-                            update: {
-                                startTime: bh.startTime,
-                                endTime: bh.endTime,
-                                isOpen: bh.isOpen ?? true,
-                            },
-                        })
-                    )
-                );
-            }
-
-            // Upsert features (one row per featureKey per seller)
-            if (features && features.length > 0) {
-                await Promise.all(
-                    features.map((f: { featureKey: string; enabled: boolean; config?: string }) => {
-                        const configJson = f.config ? JSON.parse(f.config) : null;
-                        return context.prisma.sellerFeature.upsert({
-                            where: { sellerId_featureKey: { sellerId: existing.id, featureKey: f.featureKey } },
-                            create: {
-                                sellerId: existing.id,
-                                featureKey: f.featureKey,
-                                enabled: f.enabled,
-                                config: configJson,
-                            },
-                            update: {
-                                enabled: f.enabled,
-                                config: configJson,
-                            },
-                        });
-                    })
-                );
-            }
-
-            // Return full seller with relations
-            const updated = await context.prisma.seller.findUnique({
-                where: { userId },
-                include: {
-                    products: true,
-                    stories: true,
-                    businessHours: { orderBy: { dayCode: 'asc' } },
-                    features: { orderBy: { featureKey: 'asc' } },
-                },
-            });
-
-            return {
-                ...updated,
-                businessHours: updated.businessHours,
-                features: updated.features.map((f: any) => ({
-                    ...f,
-                    config: f.config ? JSON.stringify(f.config) : null,
-                })),
-            };
-        },
-        createOrder: async (_parent: any, args: { input: { customerId: string; items: Array<{ productId: string; quantity: number }> } }, context: any) => {
+        createOrder: async (_parent, args, context) => {
             const { customerId, items } = args.input;
-
             // Fetch customer and products
             const customer = await context.prisma.user.findUnique({ where: { id: customerId } });
-            if (!customer) throw new Error('Customer not found');
-
+            if (!customer)
+                throw new Error('Customer not found');
             // Fetch all products with sellers
-            const productIds = items.map((item: any) => item.productId);
+            const productIds = items.map((item) => item.productId);
             const products = await context.prisma.product.findMany({
                 where: { id: { in: productIds } },
                 include: { seller: true }
             });
-
             // Calculate total
-            const totalAmount = items.reduce((sum: number, item: any) => {
-                const product = products.find((p: any) => p.id === item.productId);
+            const totalAmount = items.reduce((sum, item) => {
+                const product = products.find((p) => p.id === item.productId);
                 return sum + (product ? product.price * item.quantity : 0);
             }, 0);
-
             // Generate order number
             const orderNumber = `LPA-${Math.floor(1000 + Math.random() * 9000)}`;
-
             // Create order
             const order = await context.prisma.order.create({
                 data: {
@@ -362,8 +267,8 @@ export const resolvers = {
                     totalAmount,
                     customerId,
                     items: {
-                        create: items.map((item: any) => {
-                            const product = products.find((p: any) => p.id === item.productId);
+                        create: items.map((item) => {
+                            const product = products.find((p) => p.id === item.productId);
                             return {
                                 productId: item.productId,
                                 quantity: item.quantity,
@@ -397,10 +302,8 @@ export const resolvers = {
                     }
                 }
             });
-
             // Format response
             const firstName = customer.name?.split(' ')[0] || 'Customer';
-
             return {
                 status: 'success',
                 message: 'Order placed successfully',
@@ -415,7 +318,7 @@ export const resolvers = {
                         firstName,
                         greetingName: firstName
                     },
-                    items: order.items.map((item: any) => ({
+                    items: order.items.map((item) => ({
                         productId: item.productId,
                         title: item.product.title,
                         seller: {
@@ -443,14 +346,12 @@ export const resolvers = {
                 }
             };
         },
-        claimSample: async (_parent: any, args: { input: { orderId: string; sampleId: string; sellerId: string; pickupWindowId: string } }, context: any) => {
+        claimSample: async (_parent, args, context) => {
             const { orderId, sampleId, sellerId, pickupWindowId } = args.input;
-
             // Verify order exists
             const order = await context.prisma.order.findUnique({
                 where: { id: orderId }
             });
-
             if (!order) {
                 return {
                     success: false,
@@ -458,12 +359,10 @@ export const resolvers = {
                     claimedSample: null
                 };
             }
-
             // Fetch the sample
             const sample = await context.prisma.sample.findUnique({
                 where: { id: sampleId }
             });
-
             if (!sample) {
                 return {
                     success: false,
@@ -471,7 +370,6 @@ export const resolvers = {
                     claimedSample: null
                 };
             }
-
             if (sample.status !== 'available') {
                 return {
                     success: false,
@@ -479,7 +377,6 @@ export const resolvers = {
                     claimedSample: null
                 };
             }
-
             if (sample.sellerId !== sellerId) {
                 return {
                     success: false,
@@ -487,7 +384,6 @@ export const resolvers = {
                     claimedSample: null
                 };
             }
-
             // Update sample status to claimed
             const claimedSample = await context.prisma.sample.update({
                 where: { id: sampleId },
@@ -497,7 +393,6 @@ export const resolvers = {
                     claimedAt: new Date()
                 }
             });
-
             return {
                 success: true,
                 message: 'Sample claimed successfully!',
@@ -510,7 +405,7 @@ export const resolvers = {
                 }
             };
         },
-        login: async (_parent: any, _args: any, context: any) => {
+        login: async (_parent, _args, context) => {
             if (!context.user) {
                 throw new Error('Not authenticated');
             }
