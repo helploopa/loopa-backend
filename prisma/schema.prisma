@@ -1,23 +1,24 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
   extensions = [postgis]
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  password  String
-  seller    Seller?
-  orders    Order[]
+  id             String        @id @default(uuid())
+  email          String        @unique
+  name           String?
+  password       String
+  seller         Seller?
+  orders         Order[]
   claimedSamples Sample[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  orderReviews   OrderReview[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 }
 
 model Seller {
@@ -26,14 +27,25 @@ model Seller {
   user            User      @relation(fields: [userId], references: [id])
   name            String
   description     String
+  avatarUrl       String?
+  coverPhoto      String?
   latitude        Float
   longitude       Float
+  city            String?
+  state           String?
   pickupDays      String?
   pickupStartTime String?
   pickupEndTime   String?
+  serviceType     String?   // "service" or "product"
+  status          String    @default("draft") // draft, review, submitted
+  workPermit      Boolean   @default(false)
+  delivery        Boolean   @default(false)
   products        Product[]
   stories         Story[]
   samples         Sample[]
+  orders          Order[]
+  businessHours   SellerBusinessHours[]
+  features        SellerFeature[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -41,28 +53,28 @@ model Seller {
 }
 
 model Product {
-  id                String   @id @default(uuid())
+  id                String      @id @default(uuid())
   sellerId          String
-  seller            Seller   @relation(fields: [sellerId], references: [id])
+  seller            Seller      @relation(fields: [sellerId], references: [id])
   title             String
   description       String
   price             Float
-  currency          String   @default("USD")
-  quantityAvailable Int      @default(1)
-  quantityLeft      Int      @default(1) // Keeping for compatibility as requested
+  currency          String      @default("USD")
+  quantityAvailable Int         @default(1)
+  quantityLeft      Int         @default(1) // Keeping for compatibility as requested
   images            String[]
   primaryImage      String?
   imageUrl          String? // Deprecated in favor of primaryImage but keeping for now
   category          String?
   tags              String[]
   badges            String[]
-  pickupWindows     Json?    // Stores array of pickup windows
-  pickupLocation    Json?    // Stores location details
-  isFavorite        Boolean  @default(false)
+  pickupWindows     Json? // Stores array of pickup windows
+  pickupLocation    Json? // Stores location details
+  isFavorite        Boolean     @default(false)
   orderItems        OrderItem[]
   samples           Sample[]
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 }
 
 model Story {
@@ -86,44 +98,124 @@ model Category {
 }
 
 model Order {
-  id            String      @id @default(uuid())
-  orderNumber   String      @unique
-  status        String      @default("confirmed")
-  totalAmount   Float
-  currency      String      @default("USD")
-  customerId    String
-  customer      User        @relation(fields: [customerId], references: [id])
-  items         OrderItem[]
-  pickupData    Json?       // Store pickup summary and other metadata
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id          String        @id @default(uuid())
+  orderNumber String        @unique @default(cuid())
+  status      String        @default("pending")
+  totalAmount Float
+  currency    String        @default("USD")
+  customerId  String
+  customer    User          @relation(fields: [customerId], references: [id])
+  sellerId    String
+  seller      Seller        @relation(fields: [sellerId], references: [id])
+  items           OrderItem[]
+  reviews         OrderReview[]
+  orderChanges    OrderChange[]
+  deliveryHistory OrderDeliveryStatus[]
+  pickupData      Json? // Store pickup summary and other metadata
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 }
 
 model OrderItem {
-  id         String   @id @default(uuid())
+  id         String        @id @default(uuid())
   orderId    String
-  order      Order    @relation(fields: [orderId], references: [id])
+  order      Order         @relation(fields: [orderId], references: [id])
   productId  String
-  product    Product  @relation(fields: [productId], references: [id])
+  product    Product       @relation(fields: [productId], references: [id])
   quantity   Int
   price      Float
-  pickupData Json?    // Store pickup location and window details
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  pickupData      Json? // Store pickup location and window details
+  reviews         OrderReview[]
+  orderChanges    OrderChange[]
+  deliveryHistory OrderDeliveryStatus[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 }
 
 model Sample {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   sellerId        String
-  seller          Seller   @relation(fields: [sellerId], references: [id])
+  seller          Seller    @relation(fields: [sellerId], references: [id])
   productId       String?
-  product         Product? @relation(fields: [productId], references: [id])
-  status          String   @default("available") // available, claimed, expired
-  pickupWindows   Json?    // Array of available pickup windows
+  product         Product?  @relation(fields: [productId], references: [id])
+  status          String    @default("available") // available, claimed, expired
+  pickupWindows   Json? // Array of available pickup windows
   expiresAt       DateTime?
   claimedByUserId String?
-  claimedByUser   User?    @relation(fields: [claimedByUserId], references: [id])
+  claimedByUser   User?     @relation(fields: [claimedByUserId], references: [id])
   claimedAt       DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
+
+model OrderReview {
+  id            String    @id @default(uuid())
+  orderId       String
+  order         Order     @relation(fields: [orderId], references: [id])
+  customerId    String
+  customer      User      @relation(fields: [customerId], references: [id])
+  orderItemId   String
+  orderItem     OrderItem @relation(fields: [orderItemId], references: [id])
+  comments      String?
+  overallRating Int
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model OrderChange {
+  id                 String     @id @default(uuid())
+  orderId            String
+  order              Order      @relation(fields: [orderId], references: [id])
+  orderItemId        String?
+  orderItem          OrderItem? @relation(fields: [orderItemId], references: [id])
+  changedBy          String // "customer" or "seller"
+  previousStatus     String
+  newStatus          String
+  proposedPickupDate String?
+  proposedPickupTime String?
+  reason             String?
+  comments           String?
+  createdAt          DateTime   @default(now())
+}
+
+model OrderDeliveryStatus {
+  id               String     @id @default(uuid())
+  orderId          String
+  order            Order      @relation(fields: [orderId], references: [id])
+  orderItemId      String?
+  orderItem        OrderItem? @relation(fields: [orderItemId], references: [id])
+  status           String // IN_PROGRESS, READY_FOR_PICKUP, COMPLETED, CANCELLED
+  updatedBy        String // "seller" or "system"
+  pickupAddress    String?
+  pickupTimeWindow String?
+  comments         String?
+  createdAt        DateTime   @default(now())
+}
+
+model SellerBusinessHours {
+  id        String   @id @default(uuid())
+  sellerId  String
+  seller    Seller   @relation(fields: [sellerId], references: [id])
+  dayCode   String   // M=Monday, U=Tuesday, W=Wednesday, T=Thursday, F=Friday, S=Saturday, X=Sunday
+  startTime String
+  endTime   String
+  isOpen    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sellerId, dayCode])
+}
+
+model SellerFeature {
+  id         String   @id @default(uuid())
+  sellerId   String
+  seller     Seller   @relation(fields: [sellerId], references: [id])
+  featureKey String   // e.g. "sampling", "delivery"
+  enabled    Boolean  @default(false)
+  config     Json?    // feature-specific config, e.g. { weekly_sample: 10 }
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([sellerId, featureKey])
+}
+

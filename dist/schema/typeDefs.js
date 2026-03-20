@@ -1,26 +1,16 @@
-import gql from 'graphql-tag';
-
-export const typeDefs = gql`
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.typeDefs = void 0;
+const graphql_tag_1 = __importDefault(require("graphql-tag"));
+exports.typeDefs = (0, graphql_tag_1.default) `
   type User {
     id: ID!
     email: String!
     name: String
     seller: Seller
-  }
-
-  type SellerBusinessHour {
-    id: ID!
-    dayCode: String!
-    startTime: String!
-    endTime: String!
-    isOpen: Boolean!
-  }
-
-  type SellerFeature {
-    id: ID!
-    featureKey: String!
-    enabled: Boolean!
-    config: String
   }
 
   type Seller {
@@ -30,12 +20,8 @@ export const typeDefs = gql`
     latitude: Float!
     longitude: Float!
     distanceMiles: Float
-    workPermit: Boolean
-    delivery: Boolean
     products: [Product!]!
     stories: [Story!]!
-    businessHours: [SellerBusinessHour!]!
-    features: [SellerFeature!]!
   }
 
   type PickupWindow {
@@ -121,37 +107,6 @@ export const typeDefs = gql`
     images: [String!]
     tags: [String!]
     isActive: Boolean
-  }
-
-  input BusinessHourInput {
-    dayCode: String!
-    startTime: String!
-    endTime: String!
-    isOpen: Boolean
-  }
-
-  input SellerFeatureInput {
-    featureKey: String!
-    enabled: Boolean!
-    config: String
-  }
-
-  input UpdateSellerInput {
-    name: String
-    description: String
-    avatarUrl: String
-    coverPhoto: String
-    latitude: Float
-    longitude: Float
-    city: String
-    state: String
-    pickupDays: String
-    pickupStartTime: String
-    pickupEndTime: String
-    workPermit: Boolean
-    delivery: Boolean
-    businessHours: [BusinessHourInput!]
-    features: [SellerFeatureInput!]
   }
 
   input CreateOrderInput {
@@ -300,7 +255,6 @@ export const typeDefs = gql`
   type Mutation {
     createCategory(label: String!, icon: String!, isActive: Boolean, count: Int): Category!
     updateProduct(id: ID!, input: UpdateProductInput!): Product!
-    updateSeller(userId: ID!, input: UpdateSellerInput!): Seller!
     createOrder(input: CreateOrderInput!): OrderResponse!
     claimSample(input: ClaimSampleInput!): ClaimSampleResponse!
     login: User!
