@@ -9,45 +9,65 @@ datasource db {
 }
 
 model User {
-  id             String        @id @default(uuid())
-  email          String        @unique
-  name           String?
-  password       String
-  seller         Seller?
-  orders         Order[]
-  claimedSamples Sample[]
-  orderReviews   OrderReview[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id                             String        @id @default(uuid())
+  email                          String        @unique
+  firstName                      String?
+  lastName                       String?
+  name                           String?
+  password                       String
+  expoPushToken                  String?
+  emailVerified                  Boolean       @default(false)
+  emailVerificationToken         String?       @unique
+  emailVerificationTokenExpiry   DateTime?
+  seller                         Seller?
+  orders                         Order[]
+  claimedSamples                 Sample[]
+  orderReviews                   OrderReview[]
+  chatsAsParticipant1            Chat[]        @relation("ChatParticipant1")
+  chatsAsParticipant2            Chat[]        @relation("ChatParticipant2")
+  sentMessages                   Message[]
+  createdAt                      DateTime      @default(now())
+  updatedAt                      DateTime      @updatedAt
 }
 
 model Seller {
-  id              String    @id @default(uuid())
-  userId          String    @unique
-  user            User      @relation(fields: [userId], references: [id])
-  name            String
-  description     String
-  avatarUrl       String?
-  coverPhoto      String?
-  latitude        Float
-  longitude       Float
-  city            String?
-  state           String?
-  pickupDays      String?
-  pickupStartTime String?
-  pickupEndTime   String?
-  serviceType     String?   // "service" or "product"
-  status          String    @default("draft") // draft, review, submitted
-  workPermit      Boolean   @default(false)
-  delivery        Boolean   @default(false)
-  products        Product[]
-  stories         Story[]
-  samples         Sample[]
-  orders          Order[]
-  businessHours   SellerBusinessHours[]
-  features        SellerFeature[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  userId              String    @unique
+  user                User      @relation(fields: [userId], references: [id])
+  name                String
+  description         String
+  tagline             String?
+  location            String?   // free-form e.g. "Willow Creek, CA"
+  categories          String[]
+  bio                 String?
+  workPhotos          String[]
+  businessLicense     String?   // "yes" | "no" | "not_required"
+  deliveryRadiusMiles Float?
+  samplesPerMonth     Int?
+  orderCapDollars     Float?
+  publishedAt         DateTime?
+  avatarUrl           String?
+  coverPhoto          String?
+  latitude            Float
+  longitude           Float
+  city                String?
+  state               String?
+  pickupDays          String?
+  pickupStartTime     String?
+  pickupEndTime       String?
+  serviceType         String?   // "service" or "product"
+  status              String    @default("draft") // draft, review, submitted, active
+  workPermit          Boolean   @default(false)
+  delivery            Boolean   @default(false)
+  products            Product[]
+  stories             Story[]
+  samples             Sample[]
+  orders              Order[]
+  businessHours       SellerBusinessHours[]
+  features            SellerFeature[]
+  media               SellerMedia[]
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([latitude, longitude])
 }
@@ -71,10 +91,33 @@ model Product {
   pickupWindows     Json? // Stores array of pickup windows
   pickupLocation    Json? // Stores location details
   isFavorite        Boolean     @default(false)
+  isActive          Boolean     @default(true)  // false = soft-deleted
+  deletedAt         DateTime?
   orderItems        OrderItem[]
   samples           Sample[]
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
+}
+
+model SellerMedia {
+  id              String   @id @default(uuid())
+  sellerId        String
+  seller          Seller   @relation(fields: [sellerId], references: [id])
+  entityType      String   // seller_avatar | seller_cover | seller_work_photo | product
+  entityId        String?  // productId when entityType = "product"
+  filename        String
+  mimeType        String
+  sizeBytes       Int
+  storageProvider String   @default("local") // local | s3
+  storageKey      String   // local: "/uploads/file.jpg"  s3: "sellers/abc/products/xyz/image.jpg"
+  publicUrl       String   // URL served to clients
+  isPrimary       Boolean  @default(false)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([sellerId, entityType])
+  @@index([entityId])
 }
 
 model Story {
@@ -97,6 +140,37 @@ model Category {
   updatedAt DateTime @updatedAt
 }
 
+model Chat {
+  id             String    @id @default(uuid())
+  orderId        String?
+  order          Order?    @relation(fields: [orderId], references: [id])
+  participant1Id String
+  participant1   User      @relation("ChatParticipant1", fields: [participant1Id], references: [id])
+  participant2Id String
+  participant2   User      @relation("ChatParticipant2", fields: [participant2Id], references: [id])
+  lastMessageAt  DateTime?
+  unreadCount1   Int       @default(0) // unread count for participant1
+  unreadCount2   Int       @default(0) // unread count for participant2
+  messages       Message[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([participant1Id, participant2Id, orderId])
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  chatId    String
+  chat      Chat     @relation(fields: [chatId], references: [id])
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id])
+  content   String?
+  imageUrl  String?
+  type      String   @default("text") // text, image, sample_offer
+  readBy    String[] // array of userIds who have read this message
+  createdAt DateTime @default(now())
+}
+
 model Order {
   id          String        @id @default(uuid())
   orderNumber String        @unique @default(cuid())
@@ -111,7 +185,9 @@ model Order {
   reviews         OrderReview[]
   orderChanges    OrderChange[]
   deliveryHistory OrderDeliveryStatus[]
-  pickupData      Json? // Store pickup summary and other metadata
+  chats           Chat[]
+  pickupDate      String? // e.g. "03-22-2026"
+  pickupTime      String? // e.g. "10:00 - 12:00"
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 }
@@ -122,9 +198,10 @@ model OrderItem {
   order      Order         @relation(fields: [orderId], references: [id])
   productId  String
   product    Product       @relation(fields: [productId], references: [id])
-  quantity   Int
-  price      Float
-  pickupData      Json? // Store pickup location and window details
+  quantity        Int
+  price           Float
+  pickupDate      String?
+  pickupTime      String?
   reviews         OrderReview[]
   orderChanges    OrderChange[]
   deliveryHistory OrderDeliveryStatus[]
