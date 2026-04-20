@@ -20,12 +20,37 @@ const mapProduct = (product: any, latitude: number, longitude: number) => {
         quantityAvailable: product.quantityAvailable, // Already in DB
         quantityLeft: product.quantityLeft, // Keeping for compatibility
         // Map pickupWindows from JSON or fallback to seller defaults
-        pickupWindows: product.pickupWindows ? product.pickupWindows : (product.seller.pickupDays ? [{
-            days: product.seller.pickupDays,
-            startTime: product.seller.pickupStartTime,
-            endTime: product.seller.pickupEndTime,
-            formatted: `${product.seller.pickupDays} ${product.seller.pickupStartTime} - ${product.seller.pickupEndTime}`
-        }] : []),
+        pickupWindows: (() => {
+            const DAY_CODE_MAP: Record<string, string> = {
+                M: 'Mon', U: 'Tue', W: 'Wed', T: 'Thu', F: 'Fri', S: 'Sat', X: 'Sun',
+            };
+            const decodeDays = (weekOfDays: string): string =>
+                weekOfDays.split('').map(c => DAY_CODE_MAP[c] ?? c).join(', ');
+
+            const stored = product.pickupWindows as any[] | null;
+            const sellerDays = product.seller.pickupDays as string | null;
+            const sellerStart = product.seller.pickupStartTime as string | null;
+            const sellerEnd = product.seller.pickupEndTime as string | null;
+
+            if (stored && stored.length > 0) {
+                return stored.map((w: any) => {
+                    // Prefer explicit days string; fall back to decoding weekOfDays codes
+                    const days: string | null =
+                        w.days ??
+                        (w.weekOfDays ? decodeDays(w.weekOfDays) : null) ??
+                        (sellerDays ? sellerDays.split(',').map((d: string) => d.trim()).join(', ') : null);
+                    const startTime = w.startTime ?? sellerStart;
+                    const endTime = w.endTime ?? sellerEnd;
+                    const formatted = w.formatted ?? (days && startTime && endTime ? `${days} ${startTime} - ${endTime}` : null);
+                    return { days, startTime, endTime, formatted };
+                });
+            }
+            if (sellerDays) {
+                const days = sellerDays.split(',').map((d: string) => d.trim()).join(', ');
+                return [{ days, startTime: sellerStart, endTime: sellerEnd, formatted: `${days} ${sellerStart} - ${sellerEnd}` }];
+            }
+            return [];
+        })(),
         // Map pickupLocation from JSON or fallback to seller location
         pickupLocation: product.pickupLocation ? product.pickupLocation : {
             address: "88 Oak Ave, Willow Creek", // Placeholder address if not stored
@@ -132,11 +157,11 @@ export const resolvers = {
                     },
                     price: item.price,
                     quantity: item.quantity,
-                    pickup: item.pickupData || {}
+                    pickup: (item.pickupDate || item.pickupTime) ? { timeSlot: item.pickupDate } : {}
                 })),
                 pickupSummary: {
-                    location: order.items[0]?.pickupData?.location?.address || "124 Maple St, Willow Creek",
-                    time: order.items[0]?.pickupData?.window?.formatted || "Sat 2:00 PM - 4:00 PM"
+                    location: "124 Maple St, Willow Creek",
+                    time: order.items[0]?.pickupDate || "Sat 2:00 PM - 4:00 PM"
                 }
             };
         },
@@ -368,20 +393,7 @@ export const resolvers = {
                                 productId: item.productId,
                                 quantity: item.quantity,
                                 price: product?.price || 0,
-                                pickupData: product ? {
-                                    location: product.pickupLocation || {
-                                        address: "124 Maple St, Willow Creek",
-                                        city: "Willow Creek",
-                                        distanceMiles: 0.7,
-                                        coordinates: { lat: product.seller.latitude, lng: product.seller.longitude }
-                                    },
-                                    window: product.pickupWindows?.[0] || {
-                                        day: "Sat",
-                                        startTime: "14:00",
-                                        endTime: "16:00",
-                                        formatted: "Sat 2:00 PM - 4:00 PM"
-                                    }
-                                } : null
+                                pickupDate: product?.pickupWindows?.[0]?.formatted || "Sat 2:00 PM - 4:00 PM",
                             };
                         })
                     }
@@ -426,11 +438,11 @@ export const resolvers = {
                         },
                         price: item.price,
                         quantity: item.quantity,
-                        pickup: item.pickupData || {}
+                        pickup: (item.pickupDate || item.pickupTime) ? { timeSlot: item.pickupDate } : {}
                     })),
                     pickupSummary: {
-                        location: order.items[0]?.pickupData?.location?.address || "124 Maple St, Willow Creek",
-                        time: order.items[0]?.pickupData?.window?.formatted || "Sat 2:00 PM - 4:00 PM"
+                        location: "124 Maple St, Willow Creek",
+                        time: order.items[0]?.pickupDate || "Sat 2:00 PM - 4:00 PM"
                     }
                 },
                 celebration: {
@@ -444,7 +456,7 @@ export const resolvers = {
             };
         },
         claimSample: async (_parent: any, args: { input: { orderId: string; sampleId: string; sellerId: string; pickupWindowId: string } }, context: any) => {
-            const { orderId, sampleId, sellerId, pickupWindowId } = args.input;
+            const { orderId, sampleId, sellerId } = args.input;
 
             // Verify order exists
             const order = await context.prisma.order.findUnique({

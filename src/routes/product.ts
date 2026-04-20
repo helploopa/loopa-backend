@@ -36,6 +36,9 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
                         id: true,
                         name: true,
                         avatarUrl: true,
+                        pickupDays: true,
+                        pickupStartTime: true,
+                        pickupEndTime: true
                     }
                 }
             }
@@ -46,7 +49,17 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        res.status(200).json(product);
+        const mappedProduct = {
+            ...product,
+            pickupWindows: product.pickupWindows ? product.pickupWindows : (product.seller.pickupDays ? [{
+                days: product.seller.pickupDays.split(',').map((d: string) => d.trim()),
+                startTime: product.seller.pickupStartTime,
+                endTime: product.seller.pickupEndTime,
+                formatted: `${product.seller.pickupDays} ${product.seller.pickupStartTime} - ${product.seller.pickupEndTime}`
+            }] : [])
+        };
+
+        res.status(200).json(mappedProduct);
     } catch (error) {
         console.error('Error fetching product details:', error);
         res.status(500).json({ error: 'Internal server error' });

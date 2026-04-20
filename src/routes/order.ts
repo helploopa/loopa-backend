@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../context';
 import { authenticateToken } from '../middleware/auth';
+import { notifyOrderStatusChange } from '../services/pushNotification';
 
 const router = Router();
 
@@ -29,12 +30,14 @@ router.get('/active', authenticateToken, async (req: Request, res: Response): Pr
             return;
         }
 
+        // Fetch orders by status. APPROVED orders cover IN_PROGRESS and READY_FOR_PICKUP
+        // delivery stages — the order only moves to CLOSED when delivery is COMPLETED.
         const activeOrders = await prisma.order.findMany({
             where: {
                 customerId,
                 status: {
-                    in: ['pending', 'placed', 'CHANGES_REQUESTED']
-                }
+                    in: ['pending', 'placed', 'APPROVED', 'CHANGES_REQUESTED'],
+                },
             },
             include: {
                 items: {
@@ -46,32 +49,43 @@ router.get('/active', authenticateToken, async (req: Request, res: Response): Pr
                                 price: true,
                                 images: true,
                                 primaryImage: true,
-                            }
-                        }
-                    }
+                            },
+                        },
+                        deliveryHistory: {
+                            orderBy: { createdAt: 'desc' },
+                            take: 1,
+                        },
+                    },
                 },
                 seller: {
                     select: {
                         id: true,
                         name: true,
-                        avatarUrl: true
-                    }
+                        avatarUrl: true,
+                    },
                 },
                 orderChanges: {
                     where: {
                         newStatus: 'CHANGES_REQUESTED',
-                        changedBy: 'seller'
+                        changedBy: 'seller',
                     },
-                    orderBy: {
-                        createdAt: 'desc'
-                    },
-                    take: 1
-                }
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                },
             },
-            orderBy: { updatedAt: 'desc' }
+            orderBy: { updatedAt: 'desc' },
         });
 
-        res.status(200).json(activeOrders);
+        // Attach the latest delivery status for each item as a convenience field
+        const response = activeOrders.map((order) => ({
+            ...order,
+            items: order.items.map((item) => ({
+                ...item,
+                latestDeliveryStatus: item.deliveryHistory[0]?.status ?? null,
+            })),
+        }));
+
+        res.status(200).json(response);
 
     } catch (error) {
         console.error('Error fetching active orders:', error);
@@ -116,7 +130,7 @@ router.get('/active', authenticateToken, async (req: Request, res: Response): Pr
 // Logic: Automatically adds an item to an active cart for the specific seller, or creates a new active cart.
 router.post('/add-item', authenticateToken, async (req: Request, res: Response): Promise<void> => {
     try {
-        const { productId, quantity = 1 } = req.body;
+        const { productId, quantity = 1, pickupDate, pickupTime } = req.body;
 
         if (!productId) {
             res.status(400).json({ error: 'productId is required' });
@@ -167,7 +181,11 @@ router.post('/add-item', authenticateToken, async (req: Request, res: Response):
                 // Increment item quantity
                 await prisma.orderItem.update({
                     where: { id: existingItem.id },
-                    data: { quantity: existingItem.quantity + quantity }
+                    data: { 
+                        quantity: existingItem.quantity + quantity,
+                        ...(pickupDate ? { pickupDate } : {}),
+                        ...(pickupTime ? { pickupTime } : {})
+                    }
                 });
             } else {
                 // Create new item in existing order
@@ -176,7 +194,9 @@ router.post('/add-item', authenticateToken, async (req: Request, res: Response):
                         orderId: activeOrder.id,
                         productId: product.id,
                         quantity: quantity,
-                        price: product.price
+                        price: product.price,
+                        ...(pickupDate ? { pickupDate } : {}),
+                        ...(pickupTime ? { pickupTime } : {})
                     }
                 });
             }
@@ -185,7 +205,9 @@ router.post('/add-item', authenticateToken, async (req: Request, res: Response):
             await prisma.order.update({
                 where: { id: activeOrder.id },
                 data: {
-                    totalAmount: activeOrder.totalAmount + (product.price * quantity)
+                    totalAmount: activeOrder.totalAmount + (product.price * quantity),
+                    ...(pickupDate ? { pickupDate } : {}),
+                    ...(pickupTime ? { pickupTime } : {})
                 }
             });
 
@@ -197,12 +219,16 @@ router.post('/add-item', authenticateToken, async (req: Request, res: Response):
                     sellerId: product.sellerId,
                     status: 'pending',
                     totalAmount: product.price * quantity,
+                    ...(pickupDate ? { pickupDate } : {}),
+                    ...(pickupTime ? { pickupTime } : {}),
                     items: {
                         create: [
                             {
                                 productId: product.id,
                                 quantity: quantity,
-                                price: product.price
+                                price: product.price,
+                                pickupDate: pickupDate || null,
+                                pickupTime: pickupTime || null
                             }
                         ]
                     }
@@ -442,7 +468,11 @@ router.post('/:id/place', async (req: Request, res: Response): Promise<void> => 
 
         const order = await prisma.order.findUnique({
             where: { id: orderId },
-            include: { items: true }
+            include: {
+                items: {
+                    include: { product: { include: { seller: true } } }
+                }
+            }
         });
 
         if (!order) {
@@ -460,9 +490,32 @@ router.post('/:id/place', async (req: Request, res: Response): Promise<void> => 
             return;
         }
 
-        const updatedOrder = await prisma.order.update({
-            where: { id: orderId },
-            data: { status: 'placed' }
+        const updatedOrder = await prisma.$transaction(async (tx) => {
+            const timeSlot = order.pickupDate;
+
+            // Snapshot pickupData for each OrderItem
+            for (const item of order.items) {
+                let itemPickupDate = null;
+
+                if (timeSlot) {
+                    itemPickupDate = timeSlot;
+                } else if (item.product) {
+                    const pickupWindows = item.product.pickupWindows as any;
+                    itemPickupDate = pickupWindows?.[0]?.formatted || "Sat 2:00 PM - 4:00 PM";
+                }
+
+                await tx.orderItem.update({
+                    where: { id: item.id },
+                    data: itemPickupDate ? { pickupDate: itemPickupDate } : {}
+                });
+            }
+
+            // Place the order
+            return tx.order.update({
+                where: { id: orderId },
+                data: { status: 'placed' },
+                include: { items: true }
+            });
         });
 
         res.status(200).json({ message: 'Order successfully placed. Waiting for seller confirmation.', order: updatedOrder });
@@ -607,7 +660,7 @@ router.post('/:id/approve', authenticateToken, async (req: Request, res: Respons
             return up;
         });
 
-        // In a real app, send a notification here
+        notifyOrderStatusChange(orderId, order.customerId, seller.id, seller.userId, 'APPROVED').catch(console.error);
 
         res.status(200).json({ message: 'Order approved successfully.', order: updatedOrder });
 
@@ -662,7 +715,31 @@ router.patch('/:id/propose-changes', authenticateToken, async (req: Request, res
     try {
         const orderId = req.params.id as string;
         const userId = req.user?.userId;
-        const { proposedPickupDate, proposedPickupTime, reason, sellerComments } = req.body;
+        let { proposedPickupDate, proposedPickupTime, reason, sellerComments, timeSlot, pickupDate, pickupTime } = req.body;
+
+        proposedPickupDate = proposedPickupDate || pickupDate;
+        proposedPickupTime = proposedPickupTime || pickupTime;
+
+        if (timeSlot && !proposedPickupDate && !proposedPickupTime) {
+             const parts = timeSlot.split(',');
+             if (parts.length === 2) {
+                 proposedPickupTime = parts[1].trim(); 
+                 const dateParts = parts[0].trim().split(' ');
+                 if (dateParts.length >= 2) {
+                     const monthStr = dateParts[0]; 
+                     const dayStr = dateParts[1]; 
+                     const months: Record<string, string> = {
+                         "Jan": "01", "Feb": "02", "Mar": "03", "Apr": "04", 
+                         "May": "05", "Jun": "06", "Jul": "07", "Aug": "08", 
+                         "Sep": "09", "Oct": "10", "Nov": "11", "Dec": "12"
+                     };
+                     const monthNum = months[monthStr] || "01";
+                     const year = new Date().getFullYear();
+                     
+                     proposedPickupDate = `${monthNum}-${dayStr.padStart(2, '0')}-${year}`;
+                 }
+             }
+        }
 
         if (!userId) {
             res.status(401).json({ error: 'Unauthorized' });
@@ -719,7 +796,7 @@ router.patch('/:id/propose-changes', authenticateToken, async (req: Request, res
             return up;
         });
 
-        // In a real app, notify customer
+        notifyOrderStatusChange(orderId, order.customerId, seller.id, seller.userId, 'CHANGES_REQUESTED').catch(console.error);
 
         res.status(200).json({ message: 'Changes proposed. Awaiting customer review.', order: updatedOrder });
 
@@ -814,19 +891,16 @@ router.patch('/:id/review-changes', authenticateToken, async (req: Request, res:
 
         const updatedOrder = await prisma.$transaction(async (tx) => {
 
-            // If approved, parse the latest proposals to merge into pickupData or similar logic
-            let pickupDataUpdate = order.pickupData as any || {};
+            // If approved, merge the latest proposals directly into pickupDate/pickupTime
+            const dataToUpdate: any = { status: newOrderStatus };
             if (action === 'approve' && latestProposal) {
-                if (latestProposal.proposedPickupDate) pickupDataUpdate.pickupDate = latestProposal.proposedPickupDate;
-                if (latestProposal.proposedPickupTime) pickupDataUpdate.pickupTime = latestProposal.proposedPickupTime;
+                if (latestProposal.proposedPickupDate) dataToUpdate.pickupDate = latestProposal.proposedPickupDate;
+                if (latestProposal.proposedPickupTime) dataToUpdate.pickupTime = latestProposal.proposedPickupTime;
             }
 
             const up = await tx.order.update({
                 where: { id: orderId },
-                data: {
-                    status: newOrderStatus,
-                    ...(action === 'approve' ? { pickupData: pickupDataUpdate } : {})
-                }
+                data: dataToUpdate
             });
 
             await tx.orderChange.create({
@@ -842,7 +916,11 @@ router.patch('/:id/review-changes', authenticateToken, async (req: Request, res:
             return up;
         });
 
-        // In a real app, send a notification to the seller here
+        prisma.seller.findUnique({ where: { id: order.sellerId }, select: { userId: true } })
+            .then((s) => {
+                if (s) notifyOrderStatusChange(orderId, order.customerId, order.sellerId, s.userId, newOrderStatus).catch(console.error);
+            })
+            .catch(console.error);
 
         res.status(200).json({ message: `Changes ${newOrderStatus.toLowerCase()}`, order: updatedOrder });
 
@@ -858,15 +936,20 @@ router.patch('/:id/review-changes', authenticateToken, async (req: Request, res:
 
 /**
  * @swagger
- * /api/orders/{id}/delivery-status:
+ * /api/orders/{id}/{orderItemId}/delivery-status:
  *   post:
  *     summary: Seller updates delivery/fulfillment status
- *     description: Tracks fulfillment stages (IN_PROGRESS, READY_FOR_PICKUP, COMPLETED)
+ *     description: Tracks fulfillment stages (IN_PROGRESS, READY_FOR_PICKUP, COMPLETED) for a specific order item
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: orderItemId
  *         required: true
  *         schema:
  *           type: string
@@ -878,7 +961,10 @@ router.patch('/:id/review-changes', authenticateToken, async (req: Request, res:
  *             type: object
  *             required:
  *               - status
+ *               - orderItemId
  *             properties:
+ *               orderItemId:
+ *                 type: string
  *               status:
  *                 type: string
  *                 enum: [IN_PROGRESS, READY_FOR_PICKUP, COMPLETED, CANCELLED]
@@ -898,11 +984,12 @@ router.patch('/:id/review-changes', authenticateToken, async (req: Request, res:
  *       403:
  *         description: Forbidden (Not the seller)
  *       404:
- *         description: Order not found
+ *         description: Order or order item not found
  */
-router.post('/:id/delivery-status', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+router.post('/:id/:orderItemId/delivery-status', authenticateToken, async (req: Request, res: Response): Promise<void> => {
     try {
         const orderId = req.params.id as string;
+        const orderItemId = req.params.orderItemId as string;
         const userId = req.user?.userId;
         const { status, pickupAddress, pickupTimeWindow, comments } = req.body;
 
@@ -934,6 +1021,12 @@ router.post('/:id/delivery-status', authenticateToken, async (req: Request, res:
             return;
         }
 
+        const orderItem = await prisma.orderItem.findUnique({ where: { id: orderItemId } });
+        if (!orderItem || orderItem.orderId !== orderId) {
+            res.status(404).json({ error: 'Order item not found for this order' });
+            return;
+        }
+
         // Normally delivery only happens after approval
         if (order.status !== 'APPROVED' && order.status !== 'CLOSED' && order.status !== 'CANCELLED') {
             res.status(400).json({ error: `Cannot update delivery status for order in state: ${order.status}` });
@@ -945,6 +1038,7 @@ router.post('/:id/delivery-status', authenticateToken, async (req: Request, res:
             await tx.orderDeliveryStatus.create({
                 data: {
                     orderId,
+                    orderItemId,
                     status,
                     updatedBy: 'seller',
                     pickupAddress,
@@ -963,6 +1057,9 @@ router.post('/:id/delivery-status', authenticateToken, async (req: Request, res:
 
             return order;
         });
+
+        const notifyStatus = status === 'COMPLETED' ? 'CLOSED' : status;
+        notifyOrderStatusChange(orderId, order.customerId, seller.id, seller.userId, notifyStatus).catch(console.error);
 
         res.status(200).json({ message: `Delivery status updated to ${status}`, order: updatedOrder });
 
