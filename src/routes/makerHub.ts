@@ -43,11 +43,20 @@ const handlePickupsRequest = async (req: Request, res: Response, isToday: boolea
                 customer: {
                     select: {
                         id: true,
-                        name: true
+                        name: true,
+                        firstName: true,
+                        lastName: true,
+                        email: true,
                     }
                 },
                 items: {
-                    include: { product: true }
+                    include: {
+                        product: true,
+                        deliveryHistory: {
+                            orderBy: { createdAt: 'desc' },
+                            take: 1,
+                        },
+                    }
                 },
                 orderChanges: {
                     orderBy: {
@@ -206,7 +215,7 @@ router.post('/:sellerId/products', authenticateToken, async (req: Request, res: 
         const ownership = await requireSellerOwnership(req, res);
         if (!ownership) return;
 
-        const { name, title, description, price, stockQuantity, quantityAvailable, category, tags, badges } = req.body;
+        const { name, title, description, price, stockQuantity, quantityAvailable, category, tags, badges, pickupWindows, pickupLocation } = req.body;
 
         const productTitle = title ?? name;
         if (!productTitle || typeof productTitle !== 'string' || productTitle.trim().length === 0) {
@@ -236,6 +245,8 @@ router.post('/:sellerId/products', authenticateToken, async (req: Request, res: 
                 tags: Array.isArray(tags) ? tags : [],
                 badges: Array.isArray(badges) ? badges : [],
                 images: [],
+                ...(pickupWindows !== undefined && { pickupWindows }),
+                ...(pickupLocation !== undefined && { pickupLocation }),
             },
         });
 
@@ -381,6 +392,278 @@ router.delete('/:sellerId/products/:productId', authenticateToken, async (req: R
         res.status(204).send();
     } catch (err) {
         console.error('Error deleting product:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/sellers/{sellerId}/analytics/trend:
+ *   get:
+ *     summary: Get order and revenue trend data for a seller
+ *     description: Returns time-series trend data (orders + revenue) bucketed by granularity, plus a breakdown by order status for the selected period.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sellerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *           enum: [30d, 60d, 3m, 12m]
+ *           default: 30d
+ *         description: 30d → daily, 60d → daily, 3m → weekly, 12m → monthly
+ *     responses:
+ *       200:
+ *         description: Trend data and status breakdown
+ *       400:
+ *         description: Invalid period
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/:sellerId/analytics/trend', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+    try {
+        const ownership = await requireSellerOwnership(req, res);
+        if (!ownership) return;
+
+        const PERIOD_CONFIG: Record<string, { days: number; granularity: 'daily' | 'weekly' | 'monthly' }> = {
+            '30d':  { days: 30,  granularity: 'daily' },
+            '60d':  { days: 60,  granularity: 'daily' },
+            '3m':   { days: 90,  granularity: 'weekly' },
+            '12m':  { days: 365, granularity: 'monthly' },
+        };
+
+        const period = (req.query.period as string) || '30d';
+        const config = PERIOD_CONFIG[period];
+        if (!config) {
+            res.status(400).json({ error: 'VALIDATION_ERROR', message: 'period must be one of: 30d, 60d, 3m, 12m' });
+            return;
+        }
+
+        const { days, granularity } = config;
+        const now = new Date();
+        const startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - days);
+        startDate.setUTCHours(0, 0, 0, 0);
+
+        const orders = await prisma.order.findMany({
+            where: {
+                sellerId: ownership.sellerId,
+                createdAt: { gte: startDate },
+            },
+            select: { id: true, totalAmount: true, status: true, createdAt: true },
+            orderBy: { createdAt: 'asc' },
+        });
+
+        // ── Bucket key helpers ──────────────────────────────────────────────────
+        const bucketKey = (date: Date): string => {
+            const y = date.getUTCFullYear();
+            const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+            const d = String(date.getUTCDate()).padStart(2, '0');
+
+            if (granularity === 'daily') return `${y}-${m}-${d}`;
+            if (granularity === 'monthly') return `${y}-${m}`;
+            // weekly → ISO week start (Monday)
+            const day = date.getUTCDay(); // 0 Sun … 6 Sat
+            const diff = (day === 0 ? -6 : 1 - day);
+            const monday = new Date(date);
+            monday.setUTCDate(date.getUTCDate() + diff);
+            const wy = monday.getUTCFullYear();
+            const wm = String(monday.getUTCMonth() + 1).padStart(2, '0');
+            const wd = String(monday.getUTCDate()).padStart(2, '0');
+            return `${wy}-${wm}-${wd}`;
+        };
+
+        // ── Build complete bucket spine so gaps show as zero ────────────────────
+        const spine: string[] = [];
+        if (granularity === 'daily') {
+            for (let i = 0; i < days; i++) {
+                const d = new Date(startDate);
+                d.setUTCDate(startDate.getUTCDate() + i);
+                spine.push(bucketKey(d));
+            }
+        } else if (granularity === 'weekly') {
+            const cursor = new Date(startDate);
+            const firstDay = cursor.getUTCDay();
+            cursor.setUTCDate(cursor.getUTCDate() + (firstDay === 0 ? -6 : 1 - firstDay));
+            while (cursor <= now) {
+                spine.push(bucketKey(cursor));
+                cursor.setUTCDate(cursor.getUTCDate() + 7);
+            }
+        } else {
+            for (let i = 0; i < 12; i++) {
+                const d = new Date(startDate);
+                d.setUTCMonth(startDate.getUTCMonth() + i);
+                const key = bucketKey(d);
+                if (!spine.includes(key)) spine.push(key);
+            }
+        }
+
+        const buckets: Record<string, { orderCount: number; revenue: number }> = {};
+        for (const key of spine) buckets[key] = { orderCount: 0, revenue: 0 };
+
+        // ── Accumulate orders into buckets ──────────────────────────────────────
+        const statusCount: Record<string, number> = {};
+        for (const order of orders) {
+            const key = bucketKey(order.createdAt);
+            if (buckets[key]) {
+                buckets[key].orderCount += 1;
+                buckets[key].revenue += order.totalAmount;
+            }
+            statusCount[order.status] = (statusCount[order.status] ?? 0) + 1;
+        }
+
+        const trend = spine.map((label) => ({
+            label,
+            orderCount: buckets[label].orderCount,
+            revenue: parseFloat(buckets[label].revenue.toFixed(2)),
+        }));
+
+        res.status(200).json({
+            period,
+            granularity,
+            startDate: startDate.toISOString().split('T')[0],
+            endDate: now.toISOString().split('T')[0],
+            trend,
+            byStatus: statusCount,
+        });
+
+    } catch (err) {
+        console.error('Error fetching seller analytics trend:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/sellers/{sellerId}/analytics:
+ *   get:
+ *     summary: Get analytics for a seller
+ *     description: Returns revenue, order count, average order price, and samples-to-orders conversion for a given period.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sellerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *           enum: [30d, 60d, 3m, 12m]
+ *           default: 30d
+ *         description: Lookback period — 30d, 60d, 3m (90 days), or 12m (365 days).
+ *     responses:
+ *       200:
+ *         description: Analytics summary
+ *       400:
+ *         description: Invalid period
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Seller not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/:sellerId/analytics', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+    try {
+        const ownership = await requireSellerOwnership(req, res);
+        if (!ownership) return;
+
+        const PERIOD_DAYS: Record<string, number> = { '30d': 30, '60d': 60, '3m': 90, '12m': 365 };
+        const period = (req.query.period as string) || '30d';
+        const days = PERIOD_DAYS[period];
+        if (!days) {
+            res.status(400).json({ error: 'VALIDATION_ERROR', message: 'period must be one of: 30d, 60d, 3m, 12m' });
+            return;
+        }
+
+        const sellerId = ownership.sellerId;
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        startDate.setUTCHours(0, 0, 0, 0);
+
+        const COMPLETED_STATUSES = ['CLOSED', 'COMPLETED', 'completed'];
+
+        const [orders, claimedSamples] = await Promise.all([
+            prisma.order.findMany({
+                where: {
+                    sellerId,
+                    status: { in: COMPLETED_STATUSES },
+                    createdAt: { gte: startDate },
+                },
+                select: { id: true, totalAmount: true },
+            }),
+            prisma.sample.findMany({
+                where: {
+                    sellerId,
+                    status: 'claimed',
+                    claimedAt: { gte: startDate },
+                    claimedByUserId: { not: null },
+                },
+                select: { claimedByUserId: true, claimedAt: true },
+            }),
+        ]);
+
+        // Revenue & order metrics
+        const orderCount = orders.length;
+        const revenue = orders.reduce((sum, o) => sum + o.totalAmount, 0);
+        const averageOrderPrice = orderCount > 0 ? revenue / orderCount : 0;
+
+        // Samples → orders conversion:
+        // Of customers who claimed a sample within the period,
+        // how many went on to place a completed order with this seller after their claim?
+        let ordersFromSamples = 0;
+        if (claimedSamples.length > 0) {
+            const conversionChecks = await Promise.all(
+                claimedSamples.map(async (sample) => {
+                    const count = await prisma.order.count({
+                        where: {
+                            sellerId,
+                            customerId: sample.claimedByUserId!,
+                            status: { in: COMPLETED_STATUSES },
+                            createdAt: { gte: sample.claimedAt! },
+                        },
+                    });
+                    return count > 0 ? 1 : 0;
+                })
+            );
+            ordersFromSamples = conversionChecks.reduce((sum: number, v) => sum + v, 0);
+        }
+
+        const samplesClaimed = claimedSamples.length;
+        const conversionRate = samplesClaimed > 0
+            ? parseFloat((ordersFromSamples / samplesClaimed).toFixed(2))
+            : 0;
+
+        res.status(200).json({
+            period,
+            startDate: startDate.toISOString().split('T')[0],
+            endDate: new Date().toISOString().split('T')[0],
+            revenue: parseFloat(revenue.toFixed(2)),
+            orderCount,
+            averageOrderPrice: parseFloat(averageOrderPrice.toFixed(2)),
+            samplesConversion: {
+                samplesClaimed,
+                ordersFromSamples,
+                conversionRate,
+            },
+        });
+
+    } catch (err) {
+        console.error('Error fetching seller analytics:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

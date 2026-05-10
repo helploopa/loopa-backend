@@ -67,6 +67,7 @@ function formatBusiness(seller: any) {
         longitude: seller.longitude ?? 0,
         city: seller.city ?? null,
         state: seller.state ?? null,
+        zipcode: seller.zipcode ?? null,
         serviceType: seller.serviceType ?? null,
         categories: seller.categories ?? [],
         avatarUrl: seller.avatarUrl ?? null,
@@ -99,6 +100,7 @@ const step1Schema = z.object({
     longitude: z.number().min(-180).max(180).optional(),
     city: z.string().max(100).optional(),
     state: z.string().max(100).optional(),
+    zipcode: z.string().max(20).optional(),
     serviceType: z.enum(['product', 'service']).optional(),
     categories: z.array(z.string()).optional(),
     avatar: z.string().optional(), // base64 or URL
@@ -224,7 +226,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response): Promise
         return;
     }
 
-    const { name, tagline, location, latitude, longitude, city, state, serviceType, categories, avatar } = parsed.data;
+    const { name, tagline, location, latitude, longitude, city, state, zipcode, serviceType, categories, avatar } = parsed.data;
 
     const existing = await prisma.seller.findUnique({ where: { userId } });
     if (existing) {
@@ -250,6 +252,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response): Promise
                 longitude: longitude ?? 0,
                 city: city ?? null,
                 state: state ?? null,
+                zipcode: zipcode ?? null,
                 serviceType: serviceType ?? null,
                 categories: categories ?? [],
                 avatarUrl: avatarUrl ?? null,
@@ -402,6 +405,62 @@ router.patch('/:id/details', authenticateToken, async (req: Request, res: Respon
             },
         });
 
+        // --- Keep SellerFeature in sync for GraphQL discovery ---
+        if (sampling !== undefined) {
+            await prisma.sellerFeature.upsert({
+                where: { sellerId_featureKey: { sellerId: seller!.id, featureKey: 'sampling' } },
+                create: {
+                    sellerId: seller!.id,
+                    featureKey: 'sampling',
+                    enabled: sampling.available,
+                },
+                update: {
+                    enabled: sampling.available,
+                },
+            });
+
+            if (sampling.available) {
+                // Ensure a default sample product exists
+                let sampleProduct = await prisma.product.findFirst({
+                    where: { sellerId: seller!.id, title: 'Free Sample' }
+                });
+                
+                if (!sampleProduct) {
+                    sampleProduct = await prisma.product.create({
+                        data: {
+                            sellerId: seller!.id,
+                            title: 'Free Sample',
+                            description: `A complimentary sample from ${updated.name}. Experience a taste of our handcrafted goodness!`,
+                            price: 0,
+                            currency: 'USD',
+                            quantityAvailable: 100,
+                            quantityLeft: 100,
+                            category: 'Sample',
+                            tags: ['Sample', 'Free'],
+                            isActive: true,
+                            sampler: true,
+                        }
+                    });
+                }
+
+                // Ensure a Sample record exists for this product
+                const existingSample = await prisma.sample.findFirst({
+                    where: { productId: sampleProduct.id }
+                });
+
+                if (!existingSample) {
+                    await prisma.sample.create({
+                        data: {
+                            sellerId: seller!.id,
+                            productId: sampleProduct.id,
+                            status: 'available',
+                            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+                        }
+                    });
+                }
+            }
+        }
+
         res.status(200).json(formatBusiness(updated));
     } catch (err) {
         console.error('Error updating business details:', err);
@@ -527,7 +586,7 @@ router.patch('/:id', authenticateToken, async (req: Request, res: Response): Pro
     }
 
     const {
-        name, tagline, location, latitude, longitude, city, state,
+        name, tagline, location, latitude, longitude, city, state, zipcode,
         serviceType, categories, avatar,
         bio, workPhotos, businessLicense, delivery, sampling, orderCapDollars,
     } = parsed.data;
@@ -546,6 +605,7 @@ router.patch('/:id', authenticateToken, async (req: Request, res: Response): Pro
                 ...(longitude !== undefined && { longitude }),
                 ...(city !== undefined && { city }),
                 ...(state !== undefined && { state }),
+                ...(zipcode !== undefined && { zipcode }),
                 ...(serviceType !== undefined && { serviceType }),
                 ...(categories !== undefined && { categories }),
                 ...(avatar !== undefined && { avatarUrl }),
@@ -562,6 +622,62 @@ router.patch('/:id', authenticateToken, async (req: Request, res: Response): Pro
                 ...(orderCapDollars !== undefined && { orderCapDollars }),
             },
         });
+
+        // --- Keep SellerFeature in sync for GraphQL discovery ---
+        if (sampling !== undefined) {
+            await prisma.sellerFeature.upsert({
+                where: { sellerId_featureKey: { sellerId: seller!.id, featureKey: 'sampling' } },
+                create: {
+                    sellerId: seller!.id,
+                    featureKey: 'sampling',
+                    enabled: sampling.available,
+                },
+                update: {
+                    enabled: sampling.available,
+                },
+            });
+
+            if (sampling.available) {
+                // Ensure a default sample product exists
+                let sampleProduct = await prisma.product.findFirst({
+                    where: { sellerId: seller!.id, title: 'Free Sample' }
+                });
+                
+                if (!sampleProduct) {
+                    sampleProduct = await prisma.product.create({
+                        data: {
+                            sellerId: seller!.id,
+                            title: 'Free Sample',
+                            description: `A complimentary sample from ${updated.name}. Experience a taste of our handcrafted goodness!`,
+                            price: 0,
+                            currency: 'USD',
+                            quantityAvailable: 100,
+                            quantityLeft: 100,
+                            category: 'Sample',
+                            tags: ['Sample', 'Free'],
+                            isActive: true,
+                            sampler: true,
+                        }
+                    });
+                }
+
+                // Ensure a Sample record exists for this product
+                const existingSample = await prisma.sample.findFirst({
+                    where: { productId: sampleProduct.id }
+                });
+
+                if (!existingSample) {
+                    await prisma.sample.create({
+                        data: {
+                            sellerId: seller!.id,
+                            productId: sampleProduct.id,
+                            status: 'available',
+                            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+                        }
+                    });
+                }
+            }
+        }
 
         res.status(200).json(formatBusiness(updated));
     } catch (err) {

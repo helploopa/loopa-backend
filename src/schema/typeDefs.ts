@@ -108,6 +108,36 @@ export const typeDefs = gql`
     product(id: ID!): Product
     order(id: ID!): Order
     availableSampleSellers(orderId: ID!): SampleOffer!
+    nearbyFreeSampleProducts(location: LocationInput!): FreeSampleResult!
+  }
+
+  type FreeSampleSellerInfo {
+    id: ID!
+    name: String!
+    avatarUrl: String
+    city: String
+    state: String
+    zipcode: String
+    overallRating: Float
+    reviewCount: Int
+    distanceMiles: Float!
+    tags: [String!]!
+    businessHours: [SellerBusinessHour!]!
+  }
+
+  type FreeSampleProduct {
+    id: ID!
+    title: String!
+    description: String!
+    primaryImage: String
+    images: [String!]
+    tags: [String!]!
+    seller: FreeSampleSellerInfo!
+  }
+
+  type FreeSampleResult {
+    totalCount: Int!
+    products: [FreeSampleProduct!]!
   }
 
   input UpdateProductInput {

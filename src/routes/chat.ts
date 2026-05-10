@@ -131,6 +131,12 @@ router.post('/', authenticateToken, async (req: Request, res: Response): Promise
     const [p1, p2] = [userId, participantId].sort();
 
     try {
+        const participant = await prisma.user.findUnique({ where: { id: participantId }, select: { id: true } });
+        if (!participant) {
+            res.status(404).json({ error: 'Participant user not found' });
+            return;
+        }
+
         const existing = await prisma.chat.findFirst({
             where: {
                 participant1Id: p1,

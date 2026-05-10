@@ -79,7 +79,7 @@ export const resolvers = {
             const { category } = args;
 
             // Build filter object
-            const whereClause: any = {};
+            const whereClause: any = { NOT: { sampleProduct: true } };
             // If category is provided and not "all" (case insensitive), filter by it
             if (category && category.toLowerCase() !== 'all') {
                 whereClause.category = {
@@ -256,6 +256,128 @@ export const resolvers = {
                     expiresIn: '48 hours'
                 },
                 sellers
+            };
+        },
+
+        nearbyFreeSampleProducts: async (_parent: any, args: { location: any }, context: any) => {
+            const { latitude, longitude } = args.location;
+            const RADIUS_MILES = 10;
+
+            // --- Gate 1: Find all sellers with "sampling" feature enabled ---
+            const samplingFeatures = await context.prisma.sellerFeature.findMany({
+                where: { featureKey: 'sampling', enabled: true },
+                select: { sellerId: true }
+            });
+            const samplingSellerIds = samplingFeatures.map((f: any) => f.sellerId);
+
+            if (samplingSellerIds.length === 0) {
+                return { totalCount: 0, products: [] };
+            }
+
+            // --- Gate 2 & 3: Collect seller IDs to exclude for this customer ---
+            const excludedSellerIds = new Set<string>();
+            const customerId = context.user?.id; // GraphQL context.user is a Prisma User (uses .id)
+
+            if (customerId) {
+                // Gate 2: Exclude sellers the customer has previously ordered from
+                const pastOrders = await context.prisma.order.findMany({
+                    where: { customerId },
+                    select: { sellerId: true }
+                });
+                pastOrders.forEach((o: any) => excludedSellerIds.add(o.sellerId));
+
+                // Gate 3: Exclude sellers the customer has previously sampled from
+                const pastSamples = await context.prisma.sample.findMany({
+                    where: { claimedByUserId: customerId },
+                    select: { sellerId: true }
+                });
+                pastSamples.forEach((s: any) => excludedSellerIds.add(s.sellerId));
+            }
+
+            // --- Fetch qualifying sellers' products with enrichment data ---
+            const eligibleSellerIds = samplingSellerIds.filter(
+                (id: string) => !excludedSellerIds.has(id)
+            );
+
+            if (eligibleSellerIds.length === 0) {
+                return { totalCount: 0, products: [] };
+            }
+
+            const products = await context.prisma.product.findMany({
+                where: {
+                    sellerId: { in: eligibleSellerIds },
+                    isActive: true,
+                    sampleProduct: true
+                },
+                include: {
+                    seller: {
+                        include: {
+                            orders: {
+                                select: {
+                                    reviews: {
+                                        select: { overallRating: true }
+                                    }
+                                }
+                            },
+                            businessHours: true
+                        }
+                    }
+                }
+            });
+
+            // --- Gate 4: Filter by 10-mile radius and build enriched response ---
+            const nearbyProducts: any[] = [];
+
+            for (const product of products) {
+                const distance = calculateDistance(
+                    latitude, longitude,
+                    product.seller.latitude, product.seller.longitude
+                );
+
+                if (distance > RADIUS_MILES) continue;
+
+                // Compute overall rating from all reviews for this seller's orders
+                const allReviews = product.seller.orders.flatMap((o: any) => o.reviews);
+                const reviewCount = allReviews.length;
+                const overallRating = reviewCount > 0
+                    ? parseFloat((allReviews.reduce((sum: number, r: any) => sum + (r.overallRating || 0), 0) / reviewCount).toFixed(1))
+                    : null;
+
+                // Collect unique tags: product tags + seller categories
+                const tags = Array.from(new Set([
+                    ...(product.tags || []),
+                    ...(product.seller.categories || [])
+                ]));
+
+                nearbyProducts.push({
+                    id: product.id,
+                    title: product.title,
+                    description: product.description,
+                    primaryImage: product.primaryImage || product.images?.[0] || null,
+                    images: product.images || [],
+                    tags,
+                    seller: {
+                        id: product.seller.id,
+                        name: product.seller.name,
+                        avatarUrl: product.seller.avatarUrl || null,
+                        city: product.seller.city || null,
+                        state: product.seller.state || null,
+                        zipcode: product.seller.zipcode || null,
+                        overallRating,
+                        reviewCount,
+                        distanceMiles: parseFloat(distance.toFixed(1)),
+                        tags: product.seller.categories || [],
+                        businessHours: product.seller.businessHours || []
+                    }
+                });
+            }
+
+            // Sort by distance ascending
+            nearbyProducts.sort((a, b) => a.seller.distanceMiles - b.seller.distanceMiles);
+
+            return {
+                totalCount: nearbyProducts.length,
+                products: nearbyProducts
             };
         },
     },
@@ -472,9 +594,21 @@ export const resolvers = {
             }
 
             // Fetch the sample
-            const sample = await context.prisma.sample.findUnique({
+            let sample = await context.prisma.sample.findUnique({
                 where: { id: sampleId }
             });
+
+            // Fallback: If sampleId not found or specialized, look for the seller's "Free Sample"
+            if (!sample) {
+                const defaultProduct = await context.prisma.product.findFirst({
+                    where: { sellerId, title: 'Free Sample' }
+                });
+                if (defaultProduct) {
+                    sample = await context.prisma.sample.findUnique({
+                        where: { productId: defaultProduct.id }
+                    });
+                }
+            }
 
             if (!sample) {
                 return {

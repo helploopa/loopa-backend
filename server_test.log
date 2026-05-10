@@ -1,3 +1,341 @@
+
+> loopa-backend@1.0.0 dev
+> ts-node-dev --respawn --transpile-only src/index.ts
+
+[INFO] 00:43:12 ts-node-dev ver. 2.0.0 (using ts-node ver. 10.9.2, typescript ver. 5.9.3)
+Firebase Admin initialized successfully
+PrismaClientInitializationError: `PrismaClient` needs to be constructed with a non-empty, valid `PrismaClientOptions`:
+
+```
+new PrismaClient({
+  ...
+})
+```
+
+or
+
+```
+constructor() {
+  super({ ... });
+}
+```
+          
+    at new t (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:259:15)
+    at Object.<anonymous> (/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/jobs/freeSampleSweep.ts:4:16)
+    at Module._compile (node:internal/modules/cjs/loader:1760:14)
+    at Module._compile (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/source-map-support/source-map-support.js:568:25)
+    at Module.m._compile (/private/var/folders/3n/mk_w2mld7p16_cw61z6b00z40000gn/T/ts-node-dev-hook-6362096664062397.js:69:33)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1892:10)
+    at require.extensions..jsx.require.extensions..js (/private/var/folders/3n/mk_w2mld7p16_cw61z6b00z40000gn/T/ts-node-dev-hook-6362096664062397.js:114:20)
+    at require.extensions.<computed> (/private/var/folders/3n/mk_w2mld7p16_cw61z6b00z40000gn/T/ts-node-dev-hook-6362096664062397.js:71:20)
+    at Object.nodeDevHook [as .ts] (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/ts-node-dev/lib/hook.js:63:13)
+    at Module.load (node:internal/modules/cjs/loader:1480:32)
+[ERROR] 00:43:14 PrismaClientInitializationError: `PrismaClient` needs to be constructed with a non-empty, valid `PrismaClientOptions`:
+
+```
+new PrismaClient({
+  ...
+})
+```
+
+or
+
+```
+constructor() {
+  super({ ... });
+}
+```
+          
+[INFO] 00:43:53 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/jobs/freeSampleSweep.ts has been modified
+Firebase Admin initialized successfully
+🚀 REST Server ready at: http://localhost:4000/ping
+🚀 GraphQL Server ready at: http://localhost:4000/graphql
+[INFO] 00:44:17 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/index.ts has been modified
+Firebase Admin initialized successfully
+Error: listen EADDRINUSE: address already in use :::4000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at startServer (/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/index.ts:77:16)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+[ERROR] 00:44:19 Error: listen EADDRINUSE: address already in use :::4000
+[INFO] 02:12:18 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/schema/typeDefs.ts has been modified
+Firebase Admin initialized successfully
+Error: listen EADDRINUSE: address already in use :::4000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at startServer (/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/index.ts:77:16)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+[ERROR] 02:12:20 Error: listen EADDRINUSE: address already in use :::4000
+[INFO] 02:12:48 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/resolvers/index.ts has been modified
+Firebase Admin initialized successfully
+🚀 REST Server ready at: http://localhost:4000/ping
+🚀 GraphQL Server ready at: http://localhost:4000/graphql
+[INFO] 02:13:11 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/index.ts has been modified
+Firebase Admin initialized successfully
+Error: listen EADDRINUSE: address already in use :::4000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at startServer (/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/index.ts:77:16)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+[ERROR] 02:13:12 Error: listen EADDRINUSE: address already in use :::4000
+[INFO] 11:50:26 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/resolvers/index.ts has been modified
+Firebase Admin initialized successfully
+Error: listen EADDRINUSE: address already in use :::4000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at startServer (/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/index.ts:77:16)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+[ERROR] 11:50:29 Error: listen EADDRINUSE: address already in use :::4000
+[INFO] 11:51:00 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/index.ts has been modified
+Firebase Admin initialized successfully
+Error: listen EADDRINUSE: address already in use :::4000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at startServer (/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/index.ts:77:16)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+[ERROR] 11:51:02 Error: listen EADDRINUSE: address already in use :::4000
+[INFO] 00:04:21 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts has been modified
+Firebase Admin initialized successfully
+Error: listen EADDRINUSE: address already in use :::4000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at startServer (/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/index.ts:77:16)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+[ERROR] 00:04:23 Error: listen EADDRINUSE: address already in use :::4000
+[INFO] 00:04:33 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts has been modified
+Firebase Admin initialized successfully
+🚀 REST Server ready at: http://localhost:4000/ping
+🚀 GraphQL Server ready at: http://localhost:4000/graphql
+[INFO] 00:04:46 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts has been modified
+Firebase Admin initialized successfully
+🚀 REST Server ready at: http://localhost:4000/ping
+🚀 GraphQL Server ready at: http://localhost:4000/graphql
+Error verifying Firebase token: Error: The file at "./serviceAccountKey.json"SKIP_EMAIL_VERIFICATION=true does not exist, or it is not a file. ENOENT: no such file or directory, lstat '/Users/sarathbabu/Documents/personal/projects/loopa-backend/".'
+    at Object.realpathSync (node:fs:2752:29)
+    at GoogleAuth._getApplicationCredentialsFromFilePath (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/google-auth-library/build/src/auth/googleauth.js:375:27)
+    at GoogleAuth._tryGetApplicationCredentialsFromEnvironmentVariable (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/google-auth-library/build/src/auth/googleauth.js:316:25)
+    at GoogleAuth.getFileProjectId (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/google-auth-library/build/src/auth/googleauth.js:606:30)
+    at GoogleAuth.findAndCacheProjectId (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/google-auth-library/build/src/auth/googleauth.js:161:46)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5) {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'lstat',
+  path: '/Users/sarathbabu/Documents/personal/projects/loopa-backend/".'
+}
+[INFO] 00:51:50 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts has been modified
+Compilation error in /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts
+Firebase Admin initialized successfully
+[ERROR] 00:51:52 ⨯ Unable to compile TypeScript:
+src/routes/businessApi.ts(391,17): error TS1128: Declaration or statement expected.
+src/routes/businessApi.ts(392,13): error TS1135: Argument expression expected.
+src/routes/businessApi.ts(392,14): error TS1135: Argument expression expected.
+src/routes/businessApi.ts(393,9): error TS1135: Argument expression expected.
+src/routes/businessApi.ts(411,5): error TS1128: Declaration or statement expected.
+src/routes/businessApi.ts(411,7): error TS1005: 'try' expected.
+src/routes/businessApi.ts(415,1): error TS1128: Declaration or statement expected.
+src/routes/businessApi.ts(415,2): error TS1128: Declaration or statement expected.
+src/routes/businessApi.ts(544,17): error TS1128: Declaration or statement expected.
+src/routes/businessApi.ts(545,13): error TS1135: Argument expression expected.
+src/routes/businessApi.ts(545,14): error TS1135: Argument expression expected.
+src/routes/businessApi.ts(546,9): error TS1135: Argument expression expected.
+src/routes/businessApi.ts(564,5): error TS1128: Declaration or statement expected.
+src/routes/businessApi.ts(564,7): error TS1005: 'try' expected.
+src/routes/businessApi.ts(568,1): error TS1128: Declaration or statement expected.
+src/routes/businessApi.ts(568,2): error TS1128: Declaration or statement expected.
+
+[INFO] 00:54:37 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts has been modified
+Firebase Admin initialized successfully
+Error: listen EADDRINUSE: address already in use :::4000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at startServer (/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/index.ts:77:16)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+[ERROR] 00:54:39 Error: listen EADDRINUSE: address already in use :::4000
+[INFO] 01:12:39 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts has been modified
+Firebase Admin initialized successfully
+Error: listen EADDRINUSE: address already in use :::4000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at startServer (/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/index.ts:77:16)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+[ERROR] 01:12:42 Error: listen EADDRINUSE: address already in use :::4000
+[INFO] 01:12:49 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/resolvers/index.ts has been modified
+Firebase Admin initialized successfully
+🚀 REST Server ready at: http://localhost:4000/ping
+🚀 GraphQL Server ready at: http://localhost:4000/graphql
+[]
+Error updating business details: PrismaClientValidationError: 
+Invalid `prisma.sample.findUnique()` invocation in
+/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts:446:60
+
+  443 }
+  444 
+  445 // Ensure a Sample record exists for this product
+→ 446 const existingSample = await prisma.sample.findUnique({
+        where: {
+          productId: "8de9195e-335d-4301-a906-7fb44305f665",
+      ?   id?: String,
+      ?   AND?: SampleWhereInput | SampleWhereInput[],
+      ?   OR?: SampleWhereInput[],
+      ?   NOT?: SampleWhereInput | SampleWhereInput[],
+      ?   sellerId?: StringFilter | String,
+      ?   status?: StringFilter | String,
+      ?   pickupWindows?: JsonNullableFilter,
+      ?   expiresAt?: DateTimeNullableFilter | DateTime | Null,
+      ?   claimedByUserId?: StringNullableFilter | String | Null,
+      ?   claimedAt?: DateTimeNullableFilter | DateTime | Null,
+      ?   createdAt?: DateTimeFilter | DateTime,
+      ?   updatedAt?: DateTimeFilter | DateTime,
+      ?   seller?: SellerScalarRelationFilter | SellerWhereInput,
+      ?   product?: ProductNullableScalarRelationFilter | ProductWhereInput | Null,
+      ?   claimedByUser?: UserNullableScalarRelationFilter | UserWhereInput | Null
+        }
+      })
+
+Argument `where` of type SampleWhereUniqueInput needs at least one of `id` arguments. Available options are marked with ?.
+    at throwValidationException (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/core/errorRendering/throwValidationException.ts:46:9)
+    at Vr.handleRequestError (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/RequestHandler.ts:202:7)
+    at Vr.handleAndLogRequestError (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at Vr.request (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at a (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:805:24)
+    at /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts:446:40 {
+  clientVersion: '7.3.0'
+}
+Error updating business details: PrismaClientValidationError: 
+Invalid `prisma.sample.findUnique()` invocation in
+/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts:446:60
+
+  443 }
+  444 
+  445 // Ensure a Sample record exists for this product
+→ 446 const existingSample = await prisma.sample.findUnique({
+        where: {
+          productId: "8de9195e-335d-4301-a906-7fb44305f665",
+      ?   id?: String,
+      ?   AND?: SampleWhereInput | SampleWhereInput[],
+      ?   OR?: SampleWhereInput[],
+      ?   NOT?: SampleWhereInput | SampleWhereInput[],
+      ?   sellerId?: StringFilter | String,
+      ?   status?: StringFilter | String,
+      ?   pickupWindows?: JsonNullableFilter,
+      ?   expiresAt?: DateTimeNullableFilter | DateTime | Null,
+      ?   claimedByUserId?: StringNullableFilter | String | Null,
+      ?   claimedAt?: DateTimeNullableFilter | DateTime | Null,
+      ?   createdAt?: DateTimeFilter | DateTime,
+      ?   updatedAt?: DateTimeFilter | DateTime,
+      ?   seller?: SellerScalarRelationFilter | SellerWhereInput,
+      ?   product?: ProductNullableScalarRelationFilter | ProductWhereInput | Null,
+      ?   claimedByUser?: UserNullableScalarRelationFilter | UserWhereInput | Null
+        }
+      })
+
+Argument `where` of type SampleWhereUniqueInput needs at least one of `id` arguments. Available options are marked with ?.
+    at throwValidationException (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/core/errorRendering/throwValidationException.ts:46:9)
+    at Vr.handleRequestError (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/RequestHandler.ts:202:7)
+    at Vr.handleAndLogRequestError (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at Vr.request (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at a (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:805:24)
+    at /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts:446:40 {
+  clientVersion: '7.3.0'
+}
+[]
+Error updating business details: PrismaClientValidationError: 
+Invalid `prisma.sample.findUnique()` invocation in
+/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts:446:60
+
+  443 }
+  444 
+  445 // Ensure a Sample record exists for this product
+→ 446 const existingSample = await prisma.sample.findUnique({
+        where: {
+          productId: "8de9195e-335d-4301-a906-7fb44305f665",
+      ?   id?: String,
+      ?   AND?: SampleWhereInput | SampleWhereInput[],
+      ?   OR?: SampleWhereInput[],
+      ?   NOT?: SampleWhereInput | SampleWhereInput[],
+      ?   sellerId?: StringFilter | String,
+      ?   status?: StringFilter | String,
+      ?   pickupWindows?: JsonNullableFilter,
+      ?   expiresAt?: DateTimeNullableFilter | DateTime | Null,
+      ?   claimedByUserId?: StringNullableFilter | String | Null,
+      ?   claimedAt?: DateTimeNullableFilter | DateTime | Null,
+      ?   createdAt?: DateTimeFilter | DateTime,
+      ?   updatedAt?: DateTimeFilter | DateTime,
+      ?   seller?: SellerScalarRelationFilter | SellerWhereInput,
+      ?   product?: ProductNullableScalarRelationFilter | ProductWhereInput | Null,
+      ?   claimedByUser?: UserNullableScalarRelationFilter | UserWhereInput | Null
+        }
+      })
+
+Argument `where` of type SampleWhereUniqueInput needs at least one of `id` arguments. Available options are marked with ?.
+    at throwValidationException (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/core/errorRendering/throwValidationException.ts:46:9)
+    at Vr.handleRequestError (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/RequestHandler.ts:202:7)
+    at Vr.handleAndLogRequestError (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at Vr.request (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at a (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:805:24)
+    at /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts:446:40 {
+  clientVersion: '7.3.0'
+}
+[]
+Error updating business details: PrismaClientValidationError: 
+Invalid `prisma.sample.findUnique()` invocation in
+/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts:446:60
+
+  443 }
+  444 
+  445 // Ensure a Sample record exists for this product
+→ 446 const existingSample = await prisma.sample.findUnique({
+        where: {
+          productId: "8de9195e-335d-4301-a906-7fb44305f665",
+      ?   id?: String,
+      ?   AND?: SampleWhereInput | SampleWhereInput[],
+      ?   OR?: SampleWhereInput[],
+      ?   NOT?: SampleWhereInput | SampleWhereInput[],
+      ?   sellerId?: StringFilter | String,
+      ?   status?: StringFilter | String,
+      ?   pickupWindows?: JsonNullableFilter,
+      ?   expiresAt?: DateTimeNullableFilter | DateTime | Null,
+      ?   claimedByUserId?: StringNullableFilter | String | Null,
+      ?   claimedAt?: DateTimeNullableFilter | DateTime | Null,
+      ?   createdAt?: DateTimeFilter | DateTime,
+      ?   updatedAt?: DateTimeFilter | DateTime,
+      ?   seller?: SellerScalarRelationFilter | SellerWhereInput,
+      ?   product?: ProductNullableScalarRelationFilter | ProductWhereInput | Null,
+      ?   claimedByUser?: UserNullableScalarRelationFilter | UserWhereInput | Null
+        }
+      })
+
+Argument `where` of type SampleWhereUniqueInput needs at least one of `id` arguments. Available options are marked with ?.
+    at throwValidationException (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/core/errorRendering/throwValidationException.ts:46:9)
+    at Vr.handleRequestError (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/RequestHandler.ts:202:7)
+    at Vr.handleAndLogRequestError (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at Vr.request (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at a (/Users/sarathbabu/Documents/personal/projects/loopa-backend/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:805:24)
+    at /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts:446:40 {
+  clientVersion: '7.3.0'
+}
+[INFO] 01:58:42 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/routes/businessApi.ts has been modified
+Firebase Admin initialized successfully
+Error: listen EADDRINUSE: address already in use :::4000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at startServer (/Users/sarathbabu/Documents/personal/projects/loopa-backend/src/index.ts:77:16)
+    at processTicksAndRejections (node:internal/process/task_queues:103:5)
+[ERROR] 01:58:44 Error: listen EADDRINUSE: address already in use :::4000
+[INFO] 22:11:45 Restarting: /Users/sarathbabu/Documents/personal/projects/loopa-backend/src/resolvers/index.ts has been modified
 Firebase Admin initialized successfully
 🚀 REST Server ready at: http://localhost:4000/ping
 🚀 GraphQL Server ready at: http://localhost:4000/graphql

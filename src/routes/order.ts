@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../context';
 import { authenticateToken } from '../middleware/auth';
 import { notifyOrderStatusChange } from '../services/pushNotification';
+import { runFreeSampleSweep } from '../jobs/freeSampleSweep';
 
 const router = Router();
 
@@ -90,6 +91,309 @@ router.get('/active', authenticateToken, async (req: Request, res: Response): Pr
     } catch (error) {
         console.error('Error fetching active orders:', error);
         res.status(500).json({ error: 'Internal server error while fetching active orders.' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/orders/history:
+ *   get:
+ *     summary: Get order history for the logged-in customer
+ *     description: Returns past orders filtered by status and/or a specific date (createdAt). status=All returns every status.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [All, CANCELLED, COMPLETED, CLOSED, APPROVED, REJECTED]
+ *         description: Order status filter. Omit or pass "All" for no filter.
+ *       - in: query
+ *         name: date
+ *         schema:
+ *           type: string
+ *           format: date
+ *           example: "2026-04-28"
+ *         description: Filter orders created on this date (YYYY-MM-DD, UTC).
+ *     responses:
+ *       200:
+ *         description: Array of orders
+ *       400:
+ *         description: Invalid status or date
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/history', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+    try {
+        const customerId = req.user?.userId;
+        if (!customerId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        const VALID_STATUSES = new Set(['ALL', 'CANCELLED', 'COMPLETED', 'CLOSED', 'APPROVED', 'REJECTED']);
+        const { status, date } = req.query as { status?: string; date?: string };
+
+        const rawStatus = status?.toUpperCase();
+        if (rawStatus && !VALID_STATUSES.has(rawStatus)) {
+            res.status(400).json({
+                error: 'VALIDATION_ERROR',
+                message: 'Invalid status. Must be one of: All, CANCELLED, COMPLETED, CLOSED, APPROVED, REJECTED',
+            });
+            return;
+        }
+
+        // REJECTED is stored as DECLINED internally
+        const dbStatus = rawStatus === 'REJECTED' ? 'DECLINED' : rawStatus;
+        const statusFilter = dbStatus && dbStatus !== 'ALL' ? dbStatus : undefined;
+
+        let dateFilter: { gte: Date; lt: Date } | undefined;
+        if (date) {
+            const start = new Date(date);
+            if (isNaN(start.getTime())) {
+                res.status(400).json({ error: 'VALIDATION_ERROR', message: 'Invalid date format. Use YYYY-MM-DD.' });
+                return;
+            }
+            start.setUTCHours(0, 0, 0, 0);
+            const end = new Date(start);
+            end.setUTCDate(end.getUTCDate() + 1);
+            dateFilter = { gte: start, lt: end };
+        }
+
+        const orders = await prisma.order.findMany({
+            where: {
+                customerId,
+                ...(statusFilter ? { status: statusFilter } : {}),
+                ...(dateFilter ? { createdAt: dateFilter } : {}),
+            },
+            include: {
+                items: {
+                    include: {
+                        product: {
+                            select: {
+                                id: true,
+                                title: true,
+                                price: true,
+                                images: true,
+                                primaryImage: true,
+                            },
+                        },
+                        deliveryHistory: {
+                            orderBy: { createdAt: 'asc' },
+                        },
+                    },
+                },
+                seller: {
+                    select: {
+                        id: true,
+                        name: true,
+                        avatarUrl: true,
+                    },
+                },
+            },
+            orderBy: { updatedAt: 'desc' },
+        });
+
+        // Normalize DECLINED → REJECTED in the response
+        const response = orders.map((o) => ({
+            ...o,
+            status: o.status === 'DECLINED' ? 'REJECTED' : o.status,
+        }));
+
+        res.status(200).json(response);
+    } catch (error) {
+        console.error('Error fetching order history:', error);
+        res.status(500).json({ error: 'Internal server error while fetching order history.' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/orders/free-samples:
+ *   get:
+ *     summary: Get user's available free sample credits
+ *     description: Returns all orders where the user earned a free sample that is unclaimed and unexpired.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of eligible free sample credits
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/free-samples', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+    try {
+        const customerId = req.user?.userId;
+        if (!customerId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        const eligibleOrders = await prisma.order.findMany({
+            where: {
+                customerId,
+                freeSampleEligible: true,
+                freeSampleClaimed: false,
+                freeSampleExpiry: { gt: new Date() }
+            },
+            select: {
+                id: true,
+                freeSampleExpiry: true
+            },
+            orderBy: { freeSampleExpiry: 'asc' }
+        });
+
+        const responseData = {
+            totalAvailable: eligibleOrders.length,
+            eligibleClaims: eligibleOrders.map(o => ({
+                orderId: o.id,
+                expiresAt: o.freeSampleExpiry
+            }))
+        };
+
+        res.status(200).json(responseData);
+    } catch (error) {
+        console.error('Error fetching free samples:', error);
+        res.status(500).json({ error: 'Internal server error while fetching free sample eligibility.' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/orders/jobs/free-sample-sweep:
+ *   post:
+ *     summary: Manually trigger the Free Sample Eligibility Sweep job
+ *     description: |
+ *       Runs the same job that executes nightly at midnight. Scans all completed/closed orders
+ *       where all items have been reviewed, free sample has not been claimed, and marks them
+ *       as eligible with a 10-day expiry window. Useful for testing and on-demand back-fills.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Job completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 updatedCount:
+ *                   type: integer
+ *                   description: Number of orders marked eligible during this run
+ *       500:
+ *         description: Job failed
+ */
+router.post('/jobs/free-sample-sweep', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+    try {
+        const result = await runFreeSampleSweep();
+        res.status(200).json({
+            message: `Free Sample Sweep completed. ${result.updatedCount} order(s) marked as eligible.`,
+            updatedCount: result.updatedCount
+        });
+    } catch (error) {
+        console.error('Error running free sample sweep manually:', error);
+        res.status(500).json({ error: 'Job failed. Check server logs for details.' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/orders/{id}:
+ *   get:
+ *     summary: Get detailed information for a specific order
+ *     description: Retrieves the full order details including all items and their chronological delivery history.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The UUID of the order
+ *     responses:
+ *       200:
+ *         description: Order details
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/:id', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+    try {
+        const orderId = req.params.id as string;
+        const userId = req.user?.userId;
+
+        if (!userId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: {
+                items: {
+                    include: {
+                        product: {
+                            select: {
+                                id: true,
+                                title: true,
+                                price: true,
+                                images: true,
+                                primaryImage: true,
+                            },
+                        },
+                        deliveryHistory: {
+                            orderBy: { createdAt: 'asc' },
+                        },
+                    },
+                },
+                seller: {
+                    select: {
+                        id: true,
+                        name: true,
+                        avatarUrl: true,
+                        userId: true,
+                    },
+                },
+                orderChanges: {
+                    orderBy: { createdAt: 'desc' },
+                },
+            },
+        });
+
+        if (!order) {
+            res.status(404).json({ error: 'Order not found' });
+            return;
+        }
+
+        // Only the customer who placed the order or the seller fulfilling it can view it
+        if (order.customerId !== userId && order.seller.userId !== userId) {
+            res.status(403).json({ error: 'Forbidden. You do not have permission to view this order.' });
+            return;
+        }
+
+        // Normalize DECLINED → REJECTED in the response (consistent with other APIs)
+        const responseData = {
+            ...order,
+            status: order.status === 'DECLINED' ? 'REJECTED' : order.status,
+        };
+
+        res.status(200).json(responseData);
+    } catch (error) {
+        console.error('Error fetching order details:', error);
+        res.status(500).json({ error: 'Internal server error while fetching order details.' });
     }
 });
 
@@ -625,7 +929,10 @@ router.post('/:id/approve', authenticateToken, async (req: Request, res: Respons
             return;
         }
 
-        const order = await prisma.order.findUnique({ where: { id: orderId } });
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { items: true }
+        });
         if (!order) {
             res.status(404).json({ error: 'Order not found' });
             return;
@@ -656,6 +963,19 @@ router.post('/:id/approve', authenticateToken, async (req: Request, res: Respons
                     comments: 'Order accepted as-is.'
                 }
             });
+
+            // Decrement stock for each item
+            await Promise.all(
+                (order as any).items.map((item: any) =>
+                    tx.product.update({
+                        where: { id: item.productId },
+                        data: {
+                            quantityAvailable: { decrement: item.quantity },
+                            quantityLeft: { decrement: item.quantity },
+                        },
+                    })
+                )
+            );
 
             return up;
         });
@@ -757,7 +1077,14 @@ router.patch('/:id/propose-changes', authenticateToken, async (req: Request, res
             return;
         }
 
-        const order = await prisma.order.findUnique({ where: { id: orderId } });
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: {
+                items: {
+                    include: { product: { select: { sampler: true } } }
+                }
+            }
+        });
         if (!order) {
             res.status(404).json({ error: 'Order not found' });
             return;
@@ -774,10 +1101,21 @@ router.patch('/:id/propose-changes', authenticateToken, async (req: Request, res
             return;
         }
 
+        const isSampleOrder = order.items.some((item: any) => item.product?.sampler);
+
+        // For sample orders, skip customer review — auto-approve the proposed changes
+        const newStatus = isSampleOrder ? 'APPROVED' : 'CHANGES_REQUESTED';
+
         const updatedOrder = await prisma.$transaction(async (tx) => {
+            const orderData: any = { status: newStatus };
+            if (isSampleOrder) {
+                if (proposedPickupDate) orderData.pickupDate = proposedPickupDate;
+                if (proposedPickupTime) orderData.pickupTime = proposedPickupTime;
+            }
+
             const up = await tx.order.update({
                 where: { id: orderId },
-                data: { status: 'CHANGES_REQUESTED' }
+                data: orderData
             });
 
             await tx.orderChange.create({
@@ -785,7 +1123,7 @@ router.patch('/:id/propose-changes', authenticateToken, async (req: Request, res
                     orderId,
                     changedBy: 'seller',
                     previousStatus: order.status,
-                    newStatus: 'CHANGES_REQUESTED',
+                    newStatus,
                     proposedPickupDate,
                     proposedPickupTime,
                     reason,
@@ -796,9 +1134,12 @@ router.patch('/:id/propose-changes', authenticateToken, async (req: Request, res
             return up;
         });
 
-        notifyOrderStatusChange(orderId, order.customerId, seller.id, seller.userId, 'CHANGES_REQUESTED').catch(console.error);
+        notifyOrderStatusChange(orderId, order.customerId, seller.id, seller.userId, newStatus).catch(console.error);
 
-        res.status(200).json({ message: 'Changes proposed. Awaiting customer review.', order: updatedOrder });
+        const message = isSampleOrder
+            ? 'Sample order updated and auto-approved.'
+            : 'Changes proposed. Awaiting customer review.';
+        res.status(200).json({ message, order: updatedOrder });
 
     } catch (err) {
         console.error('Error proposing changes:', err);
@@ -1065,6 +1406,243 @@ router.post('/:id/:orderItemId/delivery-status', authenticateToken, async (req: 
 
     } catch (err) {
         console.error('Error updating delivery status:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/orders/{id}/item/{itemId}/review:
+ *   get:
+ *     summary: Get review for an order item
+ *     description: Retrieves the detailed review given by the customer for a specific order item.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: itemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Order review data
+ *       404:
+ *         description: Review not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/:id/item/:itemId/review', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+    try {
+        const id = req.params.id as string;
+        const itemId = req.params.itemId as string;
+
+        const review = await prisma.orderReview.findFirst({
+            where: {
+                orderId: id,
+                orderItemId: itemId
+            }
+        });
+
+        if (!review) {
+            res.status(404).json({ error: 'Review not found' });
+            return;
+        }
+
+        res.status(200).json(review);
+    } catch (err) {
+        console.error('Error fetching review:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/orders/{id}/item/{itemId}/review:
+ *   post:
+ *     summary: Submit a detailed review for an order item
+ *     description: Submits fine-grained ratings (packaging, quality, etc.) and calculates an overall rating.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: itemId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - overallRating
+ *             properties:
+ *               packagingRating:
+ *                 type: number
+ *               qualityRating:
+ *                 type: number
+ *               quantityRating:
+ *                 type: number
+ *               deliveryRating:
+ *                 type: number
+ *               itemDescribedRating:
+ *                 type: number
+ *               overallRating:
+ *                 type: number
+ *               comments:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Review submitted successfully
+ *       400:
+ *         description: Missing required fields
+ *       403:
+ *         description: Unauthorized to review
+ *       404:
+ *         description: Order not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/:id/item/:itemId/review', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+    try {
+        const id = req.params.id as string;
+        const itemId = req.params.itemId as string;
+        const customerId = req.user?.userId;
+
+        if (!customerId) {
+            res.status(401).json({ error: 'Unauthorized' });
+            return;
+        }
+
+        const {
+            packaging,
+            quality,
+            quantity,
+            delivery,
+            itemAsDescribed,
+            packagingRating,
+            qualityRating,
+            quantityRating,
+            deliveryRating,
+            itemDescribedRating,
+            overallRating,
+            comment,
+            comments
+        } = req.body;
+
+        if (overallRating === undefined) {
+            res.status(400).json({ error: 'overallRating is required' });
+            return;
+        }
+
+        const order = await prisma.order.findUnique({
+            where: { id },
+            include: { items: true }
+        });
+
+        if (!order) {
+            res.status(404).json({ error: 'Order not found' });
+            return;
+        }
+
+        if (order.customerId !== customerId) {
+            res.status(403).json({ error: 'You can only review your own orders' });
+            return;
+        }
+
+        const orderItem = order.items.find(i => i.id === itemId);
+        if (!orderItem) {
+            res.status(404).json({ error: 'Order item not found' });
+            return;
+        }
+
+        // Check if review exists to update or create
+        const existingReview = await prisma.orderReview.findFirst({
+            where: { orderId: id, orderItemId: itemId }
+        });
+
+        const data = {
+            packagingRating: packagingRating ?? packaging ?? null,
+            qualityRating: qualityRating ?? quality ?? null,
+            quantityRating: quantityRating ?? quantity ?? null,
+            deliveryRating: deliveryRating ?? delivery ?? null,
+            itemDescribedRating: itemDescribedRating ?? itemAsDescribed ?? null,
+            overallRating,
+            comments: comments ?? comment ?? null,
+        };
+
+        let review;
+        if (existingReview) {
+            review = await prisma.orderReview.update({
+                where: { id: existingReview.id },
+                data
+            });
+        } else {
+            review = await prisma.orderReview.create({
+                data: {
+                    orderId: id,
+                    customerId,
+                    orderItemId: itemId,
+                    ...data
+                }
+            });
+        }
+
+        // --- UPDATE REVIEW STATUS AND CHECK FREE SAMPLE ELIGIBILITY ---
+        // 1. Fetch all unique reviews for this order
+        const allReviews = await prisma.orderReview.findMany({
+            where: { orderId: id },
+            select: { orderItemId: true }
+        });
+
+        // 2. Verify all items have at least one review
+        const reviewedItemIds = new Set(allReviews.map(r => r.orderItemId));
+        const allItemsReviewed = order.items.every(item => reviewedItemIds.has(item.id));
+
+        // 3. Verify order is in a completed/closed state
+        const isOrderCompleted = order.status === 'completed' || order.status === 'COMPLETED' || order.status === 'CLOSED';
+
+        // 4. Update the order item reviewStatus
+        await prisma.orderItem.update({
+            where: { id: itemId },
+            data: { reviewStatus: 'completed' }
+        });
+
+        // 5. Determine new order reviewStatus
+        const newOrderReviewStatus = allItemsReviewed ? 'completed' : 'partial';
+
+        const orderUpdateData: any = {
+            reviewStatus: newOrderReviewStatus
+        };
+
+        // 6. Toggle eligibility if criteria met
+        if (allItemsReviewed && isOrderCompleted && !order.freeSampleEligible) {
+            orderUpdateData.freeSampleEligible = true;
+            orderUpdateData.freeSampleExpiry = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000); // 10 days from now
+        }
+
+        // Apply order updates
+        await prisma.order.update({
+            where: { id },
+            data: orderUpdateData
+        });
+
+        res.status(200).json({ message: 'Review submitted successfully', review });
+
+    } catch (err) {
+        console.error('Error submitting review:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

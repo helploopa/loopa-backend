@@ -317,4 +317,62 @@ router.get('/:id/products', async (req: Request, res: Response): Promise<void> =
     }
 });
 
+/**
+ * @swagger
+ * /seller/{id}/reviews:
+ *   get:
+ *     summary: Get top 20 reviews for a seller's products
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of reviews
+ *       404:
+ *         description: Seller not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/:id/reviews', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const sellerId = req.params.id as string;
+
+        const seller = await prisma.seller.findUnique({ where: { id: sellerId } });
+        if (!seller) {
+            res.status(404).json({ error: 'Seller not found' });
+            return;
+        }
+
+        const reviews = await prisma.orderReview.findMany({
+            where: {
+                orderItem: {
+                    product: { sellerId },
+                },
+            },
+            include: {
+                customer: {
+                    select: { id: true, name: true, firstName: true, lastName: true },
+                },
+                orderItem: {
+                    include: {
+                        product: {
+                            select: { id: true, title: true, primaryImage: true, images: true },
+                        },
+                    },
+                },
+            },
+            orderBy: { overallRating: 'desc' },
+            take: 20,
+        });
+
+        res.status(200).json(reviews);
+    } catch (error) {
+        console.error('Error fetching seller reviews:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 export default router;

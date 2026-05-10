@@ -52,6 +52,7 @@ model Seller {
   longitude           Float
   city                String?
   state               String?
+  zipcode             String?
   pickupDays          String?
   pickupStartTime     String?
   pickupEndTime       String?
@@ -92,6 +93,8 @@ model Product {
   pickupLocation    Json? // Stores location details
   isFavorite        Boolean     @default(false)
   isActive          Boolean     @default(true)  // false = soft-deleted
+  sampler           Boolean     @default(false)
+  sampleProduct     Boolean     @default(false)
   deletedAt         DateTime?
   orderItems        OrderItem[]
   samples           Sample[]
@@ -186,10 +189,14 @@ model Order {
   orderChanges    OrderChange[]
   deliveryHistory OrderDeliveryStatus[]
   chats           Chat[]
-  pickupDate      String? // e.g. "03-22-2026"
-  pickupTime      String? // e.g. "10:00 - 12:00"
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  pickupDate          String? // e.g. "03-22-2026"
+  pickupTime          String? // e.g. "10:00 - 12:00"
+  reviewStatus        String                @default("pending") // pending, partial, completed
+  freeSampleEligible  Boolean               @default(false)
+  freeSampleExpiry    DateTime?
+  freeSampleClaimed   Boolean               @default(false)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
 }
 
 model OrderItem {
@@ -205,6 +212,7 @@ model OrderItem {
   reviews         OrderReview[]
   orderChanges    OrderChange[]
   deliveryHistory OrderDeliveryStatus[]
+  reviewStatus    String                @default("pending") // pending, completed
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 }
@@ -226,17 +234,22 @@ model Sample {
 }
 
 model OrderReview {
-  id            String    @id @default(uuid())
-  orderId       String
-  order         Order     @relation(fields: [orderId], references: [id])
-  customerId    String
-  customer      User      @relation(fields: [customerId], references: [id])
-  orderItemId   String
-  orderItem     OrderItem @relation(fields: [orderItemId], references: [id])
-  comments      String?
-  overallRating Int
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  orderId             String
+  order               Order     @relation(fields: [orderId], references: [id])
+  customerId          String
+  customer            User      @relation(fields: [customerId], references: [id])
+  orderItemId         String
+  orderItem           OrderItem @relation(fields: [orderItemId], references: [id])
+  comments            String?
+  packagingRating     Float?
+  qualityRating       Float?
+  quantityRating      Float?
+  deliveryRating      Float?
+  itemDescribedRating Float?
+  overallRating       Float
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 }
 
 model OrderChange {
