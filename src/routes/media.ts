@@ -60,12 +60,12 @@ async function saveMediaFiles(
     entityType: string,
     entityId: string | undefined,
     replaceExisting: boolean
-): Promise<typeof import('@prisma/client').Prisma extends never ? never : Awaited<ReturnType<typeof prisma.sellerMedia.create>>[]> {
+): Promise<any[]> {
     if (replaceExisting) {
         const existing = await prisma.sellerMedia.findMany({
             where: { sellerId, entityType, ...(entityId ? { entityId } : {}) },
         });
-        await Promise.all(existing.map((m) => deleteFile(m.storageProvider, m.storageKey)));
+        await Promise.all(existing.map((m: any) => deleteFile(m.storageProvider, m.storageKey)));
         await prisma.sellerMedia.deleteMany({
             where: { sellerId, entityType, ...(entityId ? { entityId } : {}) },
         });
@@ -341,11 +341,11 @@ router.post('/sellers/:sellerId/products/:productId', authenticateToken, upload,
             where: { sellerId: check.sellerId, entityType: 'product', entityId: productId },
             orderBy: { sortOrder: 'asc' },
         });
-        const primary = allProductMedia.find((m) => m.isPrimary) ?? allProductMedia[0];
+        const primary = allProductMedia.find((m: any) => m.isPrimary) ?? allProductMedia[0];
         await prisma.product.update({
             where: { id: productId },
             data: {
-                images: allProductMedia.map((m) => m.publicUrl),
+                images: allProductMedia.map((m: any) => m.publicUrl),
                 primaryImage: primary?.publicUrl ?? null,
             },
         });
@@ -563,11 +563,11 @@ router.delete('/:mediaId', authenticateToken, async (req: Request, res: Response
             where: { sellerId: media.sellerId, entityType: 'product', entityId: media.entityId },
             orderBy: { sortOrder: 'asc' },
         });
-        const primary = remaining.find((m) => m.isPrimary) ?? remaining[0];
+        const primary = remaining.find((m: any) => m.isPrimary) ?? remaining[0];
         await prisma.product.update({
             where: { id: media.entityId },
             data: {
-                images: remaining.map((m) => m.publicUrl),
+                images: remaining.map((m: any) => m.publicUrl),
                 primaryImage: primary?.publicUrl ?? null,
             },
         });

@@ -213,7 +213,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response): Promise<
             },
         });
 
-        const result = chats.map((chat) => {
+        const result = chats.map((chat: any) => {
             const other =
                 chat.participant1Id === userId ? chat.participant2 : chat.participant1;
             const unreadCount =

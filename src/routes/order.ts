@@ -78,9 +78,9 @@ router.get('/active', authenticateToken, async (req: Request, res: Response): Pr
         });
 
         // Attach the latest delivery status for each item as a convenience field
-        const response = activeOrders.map((order) => ({
+        const response = activeOrders.map((order: any) => ({
             ...order,
-            items: order.items.map((item) => ({
+            items: order.items.map((item: any) => ({
                 ...item,
                 latestDeliveryStatus: item.deliveryHistory[0]?.status ?? null,
             })),
@@ -794,7 +794,7 @@ router.post('/:id/place', async (req: Request, res: Response): Promise<void> => 
             return;
         }
 
-        const updatedOrder = await prisma.$transaction(async (tx) => {
+        const updatedOrder = await prisma.$transaction(async (tx: any) => {
             const timeSlot = order.pickupDate;
 
             // Snapshot pickupData for each OrderItem
@@ -948,7 +948,7 @@ router.post('/:id/approve', authenticateToken, async (req: Request, res: Respons
             return;
         }
 
-        const updatedOrder = await prisma.$transaction(async (tx) => {
+        const updatedOrder = await prisma.$transaction(async (tx: any) => {
             const up = await tx.order.update({
                 where: { id: orderId },
                 data: { status: 'APPROVED' }
@@ -1106,7 +1106,7 @@ router.patch('/:id/propose-changes', authenticateToken, async (req: Request, res
         // For sample orders, skip customer review — auto-approve the proposed changes
         const newStatus = isSampleOrder ? 'APPROVED' : 'CHANGES_REQUESTED';
 
-        const updatedOrder = await prisma.$transaction(async (tx) => {
+        const updatedOrder = await prisma.$transaction(async (tx: any) => {
             const orderData: any = { status: newStatus };
             if (isSampleOrder) {
                 if (proposedPickupDate) orderData.pickupDate = proposedPickupDate;
@@ -1230,7 +1230,7 @@ router.patch('/:id/review-changes', authenticateToken, async (req: Request, res:
 
         const newOrderStatus = action === 'approve' ? 'APPROVED' : 'DECLINED';
 
-        const updatedOrder = await prisma.$transaction(async (tx) => {
+        const updatedOrder = await prisma.$transaction(async (tx: any) => {
 
             // If approved, merge the latest proposals directly into pickupDate/pickupTime
             const dataToUpdate: any = { status: newOrderStatus };
@@ -1258,7 +1258,7 @@ router.patch('/:id/review-changes', authenticateToken, async (req: Request, res:
         });
 
         prisma.seller.findUnique({ where: { id: order.sellerId }, select: { userId: true } })
-            .then((s) => {
+            .then((s: any) => {
                 if (s) notifyOrderStatusChange(orderId, order.customerId, order.sellerId, s.userId, newOrderStatus).catch(console.error);
             })
             .catch(console.error);
@@ -1374,7 +1374,7 @@ router.post('/:id/:orderItemId/delivery-status', authenticateToken, async (req: 
             return;
         }
 
-        const updatedOrder = await prisma.$transaction(async (tx) => {
+        const updatedOrder = await prisma.$transaction(async (tx: any) => {
             // Log delivery status
             await tx.orderDeliveryStatus.create({
                 data: {
