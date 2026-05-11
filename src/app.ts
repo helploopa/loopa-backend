@@ -49,13 +49,13 @@ const apolloServer = new ApolloServer({ typeDefs, resolvers });
 let apolloStarted = false;
 
 app.use('/graphql', async (req, res, next) => {
-    if (!apolloStarted) {
-        await apolloServer.start();
-        apolloStarted = true;
-    }
-    return expressMiddleware(apolloServer, {
-        context: async ({ req: r }) => context({ req: r }),
-    })(req, res, next);
+  if (!apolloStarted) {
+    await apolloServer.start();
+    apolloStarted = true;
+  }
+  return expressMiddleware(apolloServer, {
+    context: async ({ req: r }) => context({ req: r }),
+  })(req, res, next);
 });
 
 export default app;

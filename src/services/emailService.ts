@@ -10,33 +10,35 @@ import nodemailer, { Transporter } from 'nodemailer';
 let _transporter: Transporter | null = null;
 
 async function getTransporter(): Promise<Transporter> {
-    if (_transporter) return _transporter;
+  if (_transporter) return _transporter;
 
-    if (process.env.SMTP_HOST) {
-        _transporter = nodemailer.createTransport({
-            host: process.env.SMTP_HOST,
-            port: Number(process.env.SMTP_PORT ?? 587),
-            secure: Number(process.env.SMTP_PORT) === 465,
-            auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS,
-            },
-        });
-    } else {
-        // Dev fallback: Ethereal catch-all inbox — no real emails sent
-        const testAccount = await nodemailer.createTestAccount();
-        _transporter = nodemailer.createTransport({
-            host: 'smtp.ethereal.email',
-            port: 587,
-            auth: {
-                user: testAccount.user,
-                pass: testAccount.pass,
-            },
-        });
-        console.log(`📧  Email dev mode — inbox: https://ethereal.email/login  (${testAccount.user} / ${testAccount.pass})`);
-    }
+  if (process.env.SMTP_HOST) {
+    _transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT ?? 587),
+      secure: Number(process.env.SMTP_PORT) === 465,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+  } else {
+    // Dev fallback: Ethereal catch-all inbox — no real emails sent
+    const testAccount = await nodemailer.createTestAccount();
+    _transporter = nodemailer.createTransport({
+      host: 'smtp.ethereal.email',
+      port: 587,
+      auth: {
+        user: testAccount.user,
+        pass: testAccount.pass,
+      },
+    });
+    console.log(
+      `📧  Email dev mode — inbox: https://ethereal.email/login  (${testAccount.user} / ${testAccount.pass})`,
+    );
+  }
 
-    return _transporter;
+  return _transporter;
 }
 
 const FROM = process.env.SMTP_FROM ?? '"Loopa 🌿" <hello@loopa.app>';
@@ -44,33 +46,29 @@ const APP_URL = process.env.APP_URL ?? 'http://localhost:4000';
 
 // ── Send verification email ───────────────────────────────────────────────────
 
-export async function sendVerificationEmail(
-    toEmail: string,
-    firstName: string,
-    token: string
-): Promise<void> {
-    const verifyUrl = `${APP_URL}/auth/verify-email?token=${token}`;
-    const transporter = await getTransporter();
+export async function sendVerificationEmail(toEmail: string, firstName: string, token: string): Promise<void> {
+  const verifyUrl = `${APP_URL}/auth/verify-email?token=${token}`;
+  const transporter = await getTransporter();
 
-    const info = await transporter.sendMail({
-        from: FROM,
-        to: toEmail,
-        subject: 'Welcome to Loopa — please verify your email',
-        text: [
-            `Hi ${firstName},`,
-            '',
-            'Welcome to Loopa, your neighborhood marketplace!',
-            '',
-            'Please verify your email address by clicking the link below:',
-            verifyUrl,
-            '',
-            'This link expires in 24 hours.',
-            '',
-            'If you did not create an account, you can safely ignore this email.',
-            '',
-            '— The Loopa Team 🌿',
-        ].join('\n'),
-        html: `
+  const info = await transporter.sendMail({
+    from: FROM,
+    to: toEmail,
+    subject: 'Welcome to Loopa — please verify your email',
+    text: [
+      `Hi ${firstName},`,
+      '',
+      'Welcome to Loopa, your neighborhood marketplace!',
+      '',
+      'Please verify your email address by clicking the link below:',
+      verifyUrl,
+      '',
+      'This link expires in 24 hours.',
+      '',
+      'If you did not create an account, you can safely ignore this email.',
+      '',
+      '— The Loopa Team 🌿',
+    ].join('\n'),
+    html: `
 <!DOCTYPE html>
 <html>
 <body style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px;color:#333">
@@ -95,11 +93,11 @@ export async function sendVerificationEmail(
   </p>
 </body>
 </html>`,
-    });
+  });
 
-    // In dev (Ethereal), log the preview URL so you can read the email
-    const previewUrl = nodemailer.getTestMessageUrl(info);
-    if (previewUrl) {
-        console.log(`📧  Email preview: ${previewUrl}`);
-    }
+  // In dev (Ethereal), log the preview URL so you can read the email
+  const previewUrl = nodemailer.getTestMessageUrl(info);
+  if (previewUrl) {
+    console.log(`📧  Email preview: ${previewUrl}`);
+  }
 }

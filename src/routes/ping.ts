@@ -21,7 +21,7 @@ const router = Router();
  *                   example: pong
  */
 router.get('/', (req: Request, res: Response) => {
-    res.status(200).json({ message: 'pong' });
+  res.status(200).json({ message: 'pong' });
 });
 
 export default router;

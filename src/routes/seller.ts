@@ -25,66 +25,66 @@ const router = Router();
  *         description: Internal server error
  */
 router.get('/:id', async (req: Request, res: Response): Promise<void> => {
-    try {
-        const id = req.params.id as string;
-        const seller = await prisma.seller.findUnique({
-            where: { id },
-            include: {
-                user: {
-                    select: {
-                        name: true,
-                        email: true
-                    }
-                },
-                businessHours: { orderBy: { dayCode: 'asc' } },
-                features: { orderBy: { featureKey: 'asc' } },
-            }
-        });
+  try {
+    const id = req.params.id as string;
+    const seller = await prisma.seller.findUnique({
+      where: { id },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+        businessHours: { orderBy: { dayCode: 'asc' } },
+        features: { orderBy: { featureKey: 'asc' } },
+      },
+    });
 
-        const reviewsAggregation = await prisma.orderReview.aggregate({
-            where: {
-                orderItem: {
-                    product: {
-                        sellerId: id
-                    }
-                }
-            },
-            _avg: {
-                overallRating: true
-            },
-            _count: {
-                id: true
-            }
-        });
+    const reviewsAggregation = await prisma.orderReview.aggregate({
+      where: {
+        orderItem: {
+          product: {
+            sellerId: id,
+          },
+        },
+      },
+      _avg: {
+        overallRating: true,
+      },
+      _count: {
+        id: true,
+      },
+    });
 
-        if (!seller) {
-            res.status(404).json({ error: 'Seller not found' });
-            return;
-        }
-
-        const { businessHours, features, ...rest } = seller as any;
-
-        const payload = {
-            ...rest,
-            workPermit: seller.workPermit,
-            delivery: seller.delivery,
-            businessHours,
-            features: features.map((f: any) => ({
-                featureKey: f.featureKey,
-                enabled: f.enabled,
-                config: f.config ?? null,
-            })),
-            reviewsSummary: {
-                average: reviewsAggregation._avg.overallRating || 0,
-                count: reviewsAggregation._count.id
-            }
-        };
-
-        res.status(200).json(payload);
-    } catch (error) {
-        console.error('Error fetching seller:', error);
-        res.status(500).json({ error: 'Internal server error' });
+    if (!seller) {
+      res.status(404).json({ error: 'Seller not found' });
+      return;
     }
+
+    const { businessHours, features, ...rest } = seller as any;
+
+    const payload = {
+      ...rest,
+      workPermit: seller.workPermit,
+      delivery: seller.delivery,
+      businessHours,
+      features: features.map((f: any) => ({
+        featureKey: f.featureKey,
+        enabled: f.enabled,
+        config: f.config ?? null,
+      })),
+      reviewsSummary: {
+        average: reviewsAggregation._avg.overallRating || 0,
+        count: reviewsAggregation._count.id,
+      },
+    };
+
+    res.status(200).json(payload);
+  } catch (error) {
+    console.error('Error fetching seller:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**
@@ -167,107 +167,116 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
  *         description: Internal server error
  */
 router.put('/:id', async (req: Request, res: Response): Promise<void> => {
-    try {
-        const id = req.params.id as string;
-        const { businessHours, features, user, reviewsSummary, ...sellerScalars } = req.body;
+  try {
+    const id = req.params.id as string;
+    const { businessHours, features, user, reviewsSummary, ...sellerScalars } = req.body;
 
-        // Allowed scalar fields (guard against accidentally setting internal fields)
-        const allowedScalars = [
-            'name', 'description', 'avatarUrl', 'coverPhoto',
-            'latitude', 'longitude', 'city', 'state',
-            'pickupDays', 'pickupStartTime', 'pickupEndTime',
-            'workPermit', 'delivery',
-        ];
-        const updateData: Record<string, any> = {};
-        for (const key of allowedScalars) {
-            if (sellerScalars[key] !== undefined) {
-                updateData[key] = sellerScalars[key];
-            }
-        }
-
-        // Ensure seller exists
-        const existing = await prisma.seller.findUnique({ where: { id } });
-        if (!existing) {
-            res.status(404).json({ error: 'Seller not found' });
-            return;
-        }
-
-        // Update scalar fields
-        if (Object.keys(updateData).length > 0) {
-            await prisma.seller.update({ where: { id }, data: updateData });
-        }
-
-        // Upsert business hours (one row per dayCode per seller)
-        if (Array.isArray(businessHours) && businessHours.length > 0) {
-            await Promise.all(
-                businessHours.map((bh: { dayCode: string; startTime: string; endTime: string; isOpen?: boolean }) =>
-                    prisma.sellerBusinessHours.upsert({
-                        where: { sellerId_dayCode: { sellerId: id, dayCode: bh.dayCode } },
-                        create: {
-                            sellerId: id,
-                            dayCode: bh.dayCode,
-                            startTime: bh.startTime,
-                            endTime: bh.endTime,
-                            isOpen: bh.isOpen ?? true,
-                        },
-                        update: {
-                            startTime: bh.startTime,
-                            endTime: bh.endTime,
-                            isOpen: bh.isOpen ?? true,
-                        },
-                    })
-                )
-            );
-        }
-
-        // Upsert features (one row per featureKey per seller)
-        if (Array.isArray(features) && features.length > 0) {
-            await Promise.all(
-                features.map((f: { featureKey: string; enabled: boolean; config?: any }) =>
-                    prisma.sellerFeature.upsert({
-                        where: { sellerId_featureKey: { sellerId: id, featureKey: f.featureKey } },
-                        create: {
-                            sellerId: id,
-                            featureKey: f.featureKey,
-                            enabled: f.enabled,
-                            config: f.config ?? null,
-                        },
-                        update: {
-                            enabled: f.enabled,
-                            config: f.config ?? null,
-                        },
-                    })
-                )
-            );
-        }
-
-        // Return updated seller
-        const updated = await prisma.seller.findUnique({
-            where: { id },
-            include: {
-                user: { select: { name: true, email: true } },
-                businessHours: { orderBy: { dayCode: 'asc' } },
-                features: { orderBy: { featureKey: 'asc' } },
-            }
-        });
-
-        const reviewsAggregation = await prisma.orderReview.aggregate({
-            where: { orderItem: { product: { sellerId: id } } },
-            _avg: { overallRating: true },
-            _count: { id: true },
-        });
-
-        res.status(200).json({
-            ...updated,
-            reviewsSummary: {
-                average: reviewsAggregation._avg.overallRating || 0,
-                count: reviewsAggregation._count.id,
-            }
-        });
-    } catch (error) {
-        console.error('Error updating seller:', error);
-        res.status(500).json({ error: 'Internal server error' });
+    // Allowed scalar fields (guard against accidentally setting internal fields)
+    const allowedScalars = [
+      'name',
+      'description',
+      'avatarUrl',
+      'coverPhoto',
+      'latitude',
+      'longitude',
+      'city',
+      'state',
+      'pickupDays',
+      'pickupStartTime',
+      'pickupEndTime',
+      'workPermit',
+      'delivery',
+    ];
+    const updateData: Record<string, any> = {};
+    for (const key of allowedScalars) {
+      if (sellerScalars[key] !== undefined) {
+        updateData[key] = sellerScalars[key];
+      }
     }
+
+    // Ensure seller exists
+    const existing = await prisma.seller.findUnique({ where: { id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Seller not found' });
+      return;
+    }
+
+    // Update scalar fields
+    if (Object.keys(updateData).length > 0) {
+      await prisma.seller.update({ where: { id }, data: updateData });
+    }
+
+    // Upsert business hours (one row per dayCode per seller)
+    if (Array.isArray(businessHours) && businessHours.length > 0) {
+      await Promise.all(
+        businessHours.map((bh: { dayCode: string; startTime: string; endTime: string; isOpen?: boolean }) =>
+          prisma.sellerBusinessHours.upsert({
+            where: { sellerId_dayCode: { sellerId: id, dayCode: bh.dayCode } },
+            create: {
+              sellerId: id,
+              dayCode: bh.dayCode,
+              startTime: bh.startTime,
+              endTime: bh.endTime,
+              isOpen: bh.isOpen ?? true,
+            },
+            update: {
+              startTime: bh.startTime,
+              endTime: bh.endTime,
+              isOpen: bh.isOpen ?? true,
+            },
+          }),
+        ),
+      );
+    }
+
+    // Upsert features (one row per featureKey per seller)
+    if (Array.isArray(features) && features.length > 0) {
+      await Promise.all(
+        features.map((f: { featureKey: string; enabled: boolean; config?: any }) =>
+          prisma.sellerFeature.upsert({
+            where: { sellerId_featureKey: { sellerId: id, featureKey: f.featureKey } },
+            create: {
+              sellerId: id,
+              featureKey: f.featureKey,
+              enabled: f.enabled,
+              config: f.config ?? null,
+            },
+            update: {
+              enabled: f.enabled,
+              config: f.config ?? null,
+            },
+          }),
+        ),
+      );
+    }
+
+    // Return updated seller
+    const updated = await prisma.seller.findUnique({
+      where: { id },
+      include: {
+        user: { select: { name: true, email: true } },
+        businessHours: { orderBy: { dayCode: 'asc' } },
+        features: { orderBy: { featureKey: 'asc' } },
+      },
+    });
+
+    const reviewsAggregation = await prisma.orderReview.aggregate({
+      where: { orderItem: { product: { sellerId: id } } },
+      _avg: { overallRating: true },
+      _count: { id: true },
+    });
+
+    res.status(200).json({
+      ...updated,
+      reviewsSummary: {
+        average: reviewsAggregation._avg.overallRating || 0,
+        count: reviewsAggregation._count.id,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating seller:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**
@@ -292,29 +301,29 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
  *         description: Internal server error
  */
 router.get('/:id/products', async (req: Request, res: Response): Promise<void> => {
-    try {
-        const id = req.params.id as string;
+  try {
+    const id = req.params.id as string;
 
-        // Ensure seller exists first
-        const seller = await prisma.seller.findUnique({
-            where: { id },
-        });
+    // Ensure seller exists first
+    const seller = await prisma.seller.findUnique({
+      where: { id },
+    });
 
-        if (!seller) {
-            res.status(404).json({ error: 'Seller not found' });
-            return;
-        }
-
-        const products = await prisma.product.findMany({
-            where: { sellerId: id },
-            orderBy: { createdAt: 'desc' } // Optional: order by newest first
-        });
-
-        res.status(200).json(products);
-    } catch (error) {
-        console.error('Error fetching seller products:', error);
-        res.status(500).json({ error: 'Internal server error' });
+    if (!seller) {
+      res.status(404).json({ error: 'Seller not found' });
+      return;
     }
+
+    const products = await prisma.product.findMany({
+      where: { sellerId: id },
+      orderBy: { createdAt: 'desc' }, // Optional: order by newest first
+    });
+
+    res.status(200).json(products);
+  } catch (error) {
+    console.error('Error fetching seller products:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**
@@ -337,42 +346,42 @@ router.get('/:id/products', async (req: Request, res: Response): Promise<void> =
  *         description: Internal server error
  */
 router.get('/:id/reviews', async (req: Request, res: Response): Promise<void> => {
-    try {
-        const sellerId = req.params.id as string;
+  try {
+    const sellerId = req.params.id as string;
 
-        const seller = await prisma.seller.findUnique({ where: { id: sellerId } });
-        if (!seller) {
-            res.status(404).json({ error: 'Seller not found' });
-            return;
-        }
-
-        const reviews = await prisma.orderReview.findMany({
-            where: {
-                orderItem: {
-                    product: { sellerId },
-                },
-            },
-            include: {
-                customer: {
-                    select: { id: true, name: true, firstName: true, lastName: true },
-                },
-                orderItem: {
-                    include: {
-                        product: {
-                            select: { id: true, title: true, primaryImage: true, images: true },
-                        },
-                    },
-                },
-            },
-            orderBy: { overallRating: 'desc' },
-            take: 20,
-        });
-
-        res.status(200).json(reviews);
-    } catch (error) {
-        console.error('Error fetching seller reviews:', error);
-        res.status(500).json({ error: 'Internal server error' });
+    const seller = await prisma.seller.findUnique({ where: { id: sellerId } });
+    if (!seller) {
+      res.status(404).json({ error: 'Seller not found' });
+      return;
     }
+
+    const reviews = await prisma.orderReview.findMany({
+      where: {
+        orderItem: {
+          product: { sellerId },
+        },
+      },
+      include: {
+        customer: {
+          select: { id: true, name: true, firstName: true, lastName: true },
+        },
+        orderItem: {
+          include: {
+            product: {
+              select: { id: true, title: true, primaryImage: true, images: true },
+            },
+          },
+        },
+      },
+      orderBy: { overallRating: 'desc' },
+      take: 20,
+    });
+
+    res.status(200).json(reviews);
+  } catch (error) {
+    console.error('Error fetching seller reviews:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 export default router;

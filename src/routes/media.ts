@@ -8,46 +8,41 @@ const router = Router();
 
 // ── Multer: memory storage, up to 10 files × 10 MB each ─────────────────────
 const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.startsWith('image/')) {
-            return cb(new Error('Only image files are allowed'));
-        }
-        cb(null, true);
-    },
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('Only image files are allowed'));
+    }
+    cb(null, true);
+  },
 }).array('files', 10);
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function requireFiles(req: Request): Express.Multer.File[] | null {
-    const files = req.files as Express.Multer.File[] | undefined;
-    return files && files.length > 0 ? files : null;
+  const files = req.files as Express.Multer.File[] | undefined;
+  return files && files.length > 0 ? files : null;
 }
 
 async function assertSellerOwner(
-    sellerId: string,
-    userId: string
+  sellerId: string,
+  userId: string,
 ): Promise<{ ok: true; sellerId: string } | { ok: false; status: number; error: string; message: string }> {
-    const seller = await prisma.seller.findUnique({ where: { id: sellerId } });
-    if (!seller) return { ok: false, status: 404, error: 'NOT_FOUND', message: `Seller ${sellerId} not found` };
-    if (seller.userId !== userId) return { ok: false, status: 403, error: 'FORBIDDEN', message: 'Access denied' };
-    return { ok: true, sellerId: seller.id };
+  const seller = await prisma.seller.findUnique({ where: { id: sellerId } });
+  if (!seller) return { ok: false, status: 404, error: 'NOT_FOUND', message: `Seller ${sellerId} not found` };
+  if (seller.userId !== userId) return { ok: false, status: 403, error: 'FORBIDDEN', message: 'Access denied' };
+  return { ok: true, sellerId: seller.id };
 }
 
-async function syncPrimaryUrl(
-    entityType: string,
-    entityId: string | undefined,
-    sellerId: string,
-    publicUrl: string
-) {
-    if (entityType === 'seller_avatar') {
-        await prisma.seller.update({ where: { id: sellerId }, data: { avatarUrl: publicUrl } });
-    } else if (entityType === 'seller_cover') {
-        await prisma.seller.update({ where: { id: sellerId }, data: { coverPhoto: publicUrl } });
-    } else if (entityType === 'product' && entityId) {
-        await prisma.product.update({ where: { id: entityId }, data: { primaryImage: publicUrl } });
-    }
+async function syncPrimaryUrl(entityType: string, entityId: string | undefined, sellerId: string, publicUrl: string) {
+  if (entityType === 'seller_avatar') {
+    await prisma.seller.update({ where: { id: sellerId }, data: { avatarUrl: publicUrl } });
+  } else if (entityType === 'seller_cover') {
+    await prisma.seller.update({ where: { id: sellerId }, data: { coverPhoto: publicUrl } });
+  } else if (entityType === 'product' && entityId) {
+    await prisma.product.update({ where: { id: entityId }, data: { primaryImage: publicUrl } });
+  }
 }
 
 /**
@@ -55,51 +50,51 @@ async function syncPrimaryUrl(
  * Deletes existing records first when `replaceExisting` is true.
  */
 async function saveMediaFiles(
-    files: Express.Multer.File[],
-    sellerId: string,
-    entityType: string,
-    entityId: string | undefined,
-    replaceExisting: boolean
+  files: Express.Multer.File[],
+  sellerId: string,
+  entityType: string,
+  entityId: string | undefined,
+  replaceExisting: boolean,
 ): Promise<any[]> {
-    if (replaceExisting) {
-        const existing = await prisma.sellerMedia.findMany({
-            where: { sellerId, entityType, ...(entityId ? { entityId } : {}) },
-        });
-        await Promise.all(existing.map((m: any) => deleteFile(m.storageProvider, m.storageKey)));
-        await prisma.sellerMedia.deleteMany({
-            where: { sellerId, entityType, ...(entityId ? { entityId } : {}) },
-        });
-    }
+  if (replaceExisting) {
+    const existing = await prisma.sellerMedia.findMany({
+      where: { sellerId, entityType, ...(entityId ? { entityId } : {}) },
+    });
+    await Promise.all(existing.map((m: any) => deleteFile(m.storageProvider, m.storageKey)));
+    await prisma.sellerMedia.deleteMany({
+      where: { sellerId, entityType, ...(entityId ? { entityId } : {}) },
+    });
+  }
 
-    const startOrder = replaceExisting
-        ? 0
-        : await prisma.sellerMedia.count({
-              where: { sellerId, entityType, ...(entityId ? { entityId } : {}) },
-          });
+  const startOrder = replaceExisting
+    ? 0
+    : await prisma.sellerMedia.count({
+        where: { sellerId, entityType, ...(entityId ? { entityId } : {}) },
+      });
 
-    const created = await Promise.all(
-        files.map(async (file, idx) => {
-            const storageKey = buildStorageKey(sellerId, entityType, file.originalname, entityId);
-            const { storageProvider, publicUrl } = await uploadFile(file.buffer, storageKey);
-            return prisma.sellerMedia.create({
-                data: {
-                    sellerId,
-                    entityType,
-                    entityId: entityId ?? null,
-                    filename: file.originalname,
-                    mimeType: file.mimetype,
-                    sizeBytes: file.size,
-                    storageProvider,
-                    storageKey,
-                    publicUrl,
-                    isPrimary: replaceExisting ? idx === 0 : false,
-                    sortOrder: startOrder + idx,
-                },
-            });
-        })
-    );
+  const created = await Promise.all(
+    files.map(async (file, idx) => {
+      const storageKey = buildStorageKey(sellerId, entityType, file.originalname, entityId);
+      const { storageProvider, publicUrl } = await uploadFile(file.buffer, storageKey);
+      return prisma.sellerMedia.create({
+        data: {
+          sellerId,
+          entityType,
+          entityId: entityId ?? null,
+          filename: file.originalname,
+          mimeType: file.mimetype,
+          sizeBytes: file.size,
+          storageProvider,
+          storageKey,
+          publicUrl,
+          isPrimary: replaceExisting ? idx === 0 : false,
+          sortOrder: startOrder + idx,
+        },
+      });
+    }),
+  );
 
-    return created;
+  return created;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -134,25 +129,39 @@ async function saveMediaFiles(
  *       201:
  *         description: Media records created
  */
-router.post('/sellers/:sellerId/avatar', authenticateToken, upload, async (req: Request, res: Response): Promise<void> => {
+router.post(
+  '/sellers/:sellerId/avatar',
+  authenticateToken,
+  upload,
+  async (req: Request, res: Response): Promise<void> => {
     const userId = req.user?.userId as string;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
 
     const files = requireFiles(req);
-    if (!files) { res.status(400).json({ error: 'VALIDATION_ERROR', message: 'At least one file is required' }); return; }
+    if (!files) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', message: 'At least one file is required' });
+      return;
+    }
 
     const check = await assertSellerOwner(req.params.sellerId as string, userId);
-    if (!check.ok) { res.status(check.status).json({ error: check.error, message: check.message }); return; }
+    if (!check.ok) {
+      res.status(check.status).json({ error: check.error, message: check.message });
+      return;
+    }
 
     try {
-        const created = await saveMediaFiles(files, check.sellerId, 'seller_avatar', undefined, true);
-        await syncPrimaryUrl('seller_avatar', undefined, check.sellerId, created[0].publicUrl);
-        res.status(201).json(created);
+      const created = await saveMediaFiles(files, check.sellerId, 'seller_avatar', undefined, true);
+      await syncPrimaryUrl('seller_avatar', undefined, check.sellerId, created[0].publicUrl);
+      res.status(201).json(created);
     } catch (err) {
-        console.error('Avatar upload error:', err);
-        res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Upload failed' });
+      console.error('Avatar upload error:', err);
+      res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Upload failed' });
     }
-});
+  },
+);
 
 // ════════════════════════════════════════════════════════════════════════════
 // POST /api/media/sellers/:sellerId/cover
@@ -186,25 +195,39 @@ router.post('/sellers/:sellerId/avatar', authenticateToken, upload, async (req: 
  *       201:
  *         description: Media records created
  */
-router.post('/sellers/:sellerId/cover', authenticateToken, upload, async (req: Request, res: Response): Promise<void> => {
+router.post(
+  '/sellers/:sellerId/cover',
+  authenticateToken,
+  upload,
+  async (req: Request, res: Response): Promise<void> => {
     const userId = req.user?.userId as string;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
 
     const files = requireFiles(req);
-    if (!files) { res.status(400).json({ error: 'VALIDATION_ERROR', message: 'At least one file is required' }); return; }
+    if (!files) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', message: 'At least one file is required' });
+      return;
+    }
 
     const check = await assertSellerOwner(req.params.sellerId as string, userId);
-    if (!check.ok) { res.status(check.status).json({ error: check.error, message: check.message }); return; }
+    if (!check.ok) {
+      res.status(check.status).json({ error: check.error, message: check.message });
+      return;
+    }
 
     try {
-        const created = await saveMediaFiles(files, check.sellerId, 'seller_cover', undefined, true);
-        await syncPrimaryUrl('seller_cover', undefined, check.sellerId, created[0].publicUrl);
-        res.status(201).json(created);
+      const created = await saveMediaFiles(files, check.sellerId, 'seller_cover', undefined, true);
+      await syncPrimaryUrl('seller_cover', undefined, check.sellerId, created[0].publicUrl);
+      res.status(201).json(created);
     } catch (err) {
-        console.error('Cover upload error:', err);
-        res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Upload failed' });
+      console.error('Cover upload error:', err);
+      res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Upload failed' });
     }
-});
+  },
+);
 
 // ════════════════════════════════════════════════════════════════════════════
 // POST /api/media/sellers/:sellerId/work-photos
@@ -238,35 +261,49 @@ router.post('/sellers/:sellerId/cover', authenticateToken, upload, async (req: R
  *       201:
  *         description: Media records created
  */
-router.post('/sellers/:sellerId/work-photos', authenticateToken, upload, async (req: Request, res: Response): Promise<void> => {
+router.post(
+  '/sellers/:sellerId/work-photos',
+  authenticateToken,
+  upload,
+  async (req: Request, res: Response): Promise<void> => {
     const userId = req.user?.userId as string;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
 
     const files = requireFiles(req);
-    if (!files) { res.status(400).json({ error: 'VALIDATION_ERROR', message: 'At least one file is required' }); return; }
+    if (!files) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', message: 'At least one file is required' });
+      return;
+    }
 
     const check = await assertSellerOwner(req.params.sellerId as string, userId);
-    if (!check.ok) { res.status(check.status).json({ error: check.error, message: check.message }); return; }
+    if (!check.ok) {
+      res.status(check.status).json({ error: check.error, message: check.message });
+      return;
+    }
 
     try {
-        const created = await saveMediaFiles(files, check.sellerId, 'seller_work_photo', undefined, false);
+      const created = await saveMediaFiles(files, check.sellerId, 'seller_work_photo', undefined, false);
 
-        const allWorkPhotos = await prisma.sellerMedia.findMany({
-            where: { sellerId: check.sellerId, entityType: 'seller_work_photo' },
-            orderBy: { sortOrder: 'asc' },
-            select: { publicUrl: true },
-        });
-        await prisma.seller.update({
-            where: { id: check.sellerId },
-            data: { workPhotos: allWorkPhotos.map((m) => m.publicUrl) },
-        });
+      const allWorkPhotos = await prisma.sellerMedia.findMany({
+        where: { sellerId: check.sellerId, entityType: 'seller_work_photo' },
+        orderBy: { sortOrder: 'asc' },
+        select: { publicUrl: true },
+      });
+      await prisma.seller.update({
+        where: { id: check.sellerId },
+        data: { workPhotos: allWorkPhotos.map((m) => m.publicUrl) },
+      });
 
-        res.status(201).json(created);
+      res.status(201).json(created);
     } catch (err) {
-        console.error('Work photo upload error:', err);
-        res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Upload failed' });
+      console.error('Work photo upload error:', err);
+      res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Upload failed' });
     }
-});
+  },
+);
 
 // ════════════════════════════════════════════════════════════════════════════
 // POST /api/media/sellers/:sellerId/products/:productId
@@ -305,57 +342,71 @@ router.post('/sellers/:sellerId/work-photos', authenticateToken, upload, async (
  *       201:
  *         description: Media records created
  */
-router.post('/sellers/:sellerId/products/:productId', authenticateToken, upload, async (req: Request, res: Response): Promise<void> => {
+router.post(
+  '/sellers/:sellerId/products/:productId',
+  authenticateToken,
+  upload,
+  async (req: Request, res: Response): Promise<void> => {
     const userId = req.user?.userId as string;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
 
     const files = requireFiles(req);
-    if (!files) { res.status(400).json({ error: 'VALIDATION_ERROR', message: 'At least one file is required' }); return; }
+    if (!files) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', message: 'At least one file is required' });
+      return;
+    }
 
     const { sellerId, productId } = req.params as { sellerId: string; productId: string };
 
     const check = await assertSellerOwner(sellerId, userId);
-    if (!check.ok) { res.status(check.status).json({ error: check.error, message: check.message }); return; }
+    if (!check.ok) {
+      res.status(check.status).json({ error: check.error, message: check.message });
+      return;
+    }
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product || product.sellerId !== check.sellerId) {
-        res.status(404).json({ error: 'NOT_FOUND', message: `Product ${productId} not found` });
-        return;
+      res.status(404).json({ error: 'NOT_FOUND', message: `Product ${productId} not found` });
+      return;
     }
 
     try {
-        const existingCount = await prisma.sellerMedia.count({
-            where: { sellerId: check.sellerId, entityType: 'product', entityId: productId },
-        });
-        const isFirstBatch = existingCount === 0;
+      const existingCount = await prisma.sellerMedia.count({
+        where: { sellerId: check.sellerId, entityType: 'product', entityId: productId },
+      });
+      const isFirstBatch = existingCount === 0;
 
-        // saveMediaFiles appends and does not set isPrimary — handle first batch manually
-        const created = await saveMediaFiles(files, check.sellerId, 'product', productId, false);
+      // saveMediaFiles appends and does not set isPrimary — handle first batch manually
+      const created = await saveMediaFiles(files, check.sellerId, 'product', productId, false);
 
-        if (isFirstBatch && created.length > 0) {
-            await prisma.sellerMedia.update({ where: { id: created[0].id }, data: { isPrimary: true } });
-            created[0].isPrimary = true;
-        }
+      if (isFirstBatch && created.length > 0) {
+        await prisma.sellerMedia.update({ where: { id: created[0].id }, data: { isPrimary: true } });
+        created[0].isPrimary = true;
+      }
 
-        const allProductMedia = await prisma.sellerMedia.findMany({
-            where: { sellerId: check.sellerId, entityType: 'product', entityId: productId },
-            orderBy: { sortOrder: 'asc' },
-        });
-        const primary = allProductMedia.find((m: any) => m.isPrimary) ?? allProductMedia[0];
-        await prisma.product.update({
-            where: { id: productId },
-            data: {
-                images: allProductMedia.map((m: any) => m.publicUrl),
-                primaryImage: primary?.publicUrl ?? null,
-            },
-        });
+      const allProductMedia = await prisma.sellerMedia.findMany({
+        where: { sellerId: check.sellerId, entityType: 'product', entityId: productId },
+        orderBy: { sortOrder: 'asc' },
+      });
+      const primary = allProductMedia.find((m: any) => m.isPrimary) ?? allProductMedia[0];
+      await prisma.product.update({
+        where: { id: productId },
+        data: {
+          images: allProductMedia.map((m: any) => m.publicUrl),
+          primaryImage: primary?.publicUrl ?? null,
+        },
+      });
 
-        res.status(201).json(created);
+      res.status(201).json(created);
     } catch (err) {
-        console.error('Product image upload error:', err);
-        res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Upload failed' });
+      console.error('Product image upload error:', err);
+      res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Upload failed' });
     }
-});
+  },
+);
 
 // ════════════════════════════════════════════════════════════════════════════
 // GET /api/media/sellers/:sellerId
@@ -387,24 +438,30 @@ router.post('/sellers/:sellerId/products/:productId', authenticateToken, upload,
  *         description: Array of media records
  */
 router.get('/sellers/:sellerId', authenticateToken, async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.userId as string;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const userId = req.user?.userId as string;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
 
-    const check = await assertSellerOwner(req.params.sellerId as string, userId);
-    if (!check.ok) { res.status(check.status).json({ error: check.error, message: check.message }); return; }
+  const check = await assertSellerOwner(req.params.sellerId as string, userId);
+  if (!check.ok) {
+    res.status(check.status).json({ error: check.error, message: check.message });
+    return;
+  }
 
-    const { type, entityId } = req.query as { type?: string; entityId?: string };
+  const { type, entityId } = req.query as { type?: string; entityId?: string };
 
-    const media = await prisma.sellerMedia.findMany({
-        where: {
-            sellerId: check.sellerId,
-            ...(type && { entityType: type }),
-            ...(entityId && { entityId }),
-        },
-        orderBy: [{ entityType: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
-    });
+  const media = await prisma.sellerMedia.findMany({
+    where: {
+      sellerId: check.sellerId,
+      ...(type && { entityType: type }),
+      ...(entityId && { entityId }),
+    },
+    orderBy: [{ entityType: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+  });
 
-    res.status(200).json(media);
+  res.status(200).json(media);
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -428,27 +485,36 @@ router.get('/sellers/:sellerId', authenticateToken, async (req: Request, res: Re
  *         description: Updated media record
  */
 router.patch('/:mediaId/set-primary', authenticateToken, async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.userId as string;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const userId = req.user?.userId as string;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
 
-    const media = await prisma.sellerMedia.findUnique({ where: { id: req.params.mediaId as string } });
-    if (!media) { res.status(404).json({ error: 'NOT_FOUND', message: 'Media not found' }); return; }
+  const media = await prisma.sellerMedia.findUnique({ where: { id: req.params.mediaId as string } });
+  if (!media) {
+    res.status(404).json({ error: 'NOT_FOUND', message: 'Media not found' });
+    return;
+  }
 
-    const check = await assertSellerOwner(media.sellerId, userId);
-    if (!check.ok) { res.status(check.status).json({ error: check.error, message: check.message }); return; }
+  const check = await assertSellerOwner(media.sellerId, userId);
+  if (!check.ok) {
+    res.status(check.status).json({ error: check.error, message: check.message });
+    return;
+  }
 
-    await prisma.$transaction([
-        prisma.sellerMedia.updateMany({
-            where: { sellerId: media.sellerId, entityType: media.entityType, entityId: media.entityId ?? undefined },
-            data: { isPrimary: false },
-        }),
-        prisma.sellerMedia.update({ where: { id: media.id }, data: { isPrimary: true } }),
-    ]);
+  await prisma.$transaction([
+    prisma.sellerMedia.updateMany({
+      where: { sellerId: media.sellerId, entityType: media.entityType, entityId: media.entityId ?? undefined },
+      data: { isPrimary: false },
+    }),
+    prisma.sellerMedia.update({ where: { id: media.id }, data: { isPrimary: true } }),
+  ]);
 
-    await syncPrimaryUrl(media.entityType, media.entityId ?? undefined, media.sellerId, media.publicUrl);
+  await syncPrimaryUrl(media.entityType, media.entityId ?? undefined, media.sellerId, media.publicUrl);
 
-    const updated = await prisma.sellerMedia.findUnique({ where: { id: media.id } });
-    res.status(200).json(updated);
+  const updated = await prisma.sellerMedia.findUnique({ where: { id: media.id } });
+  res.status(200).json(updated);
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -482,23 +548,32 @@ router.patch('/:mediaId/set-primary', authenticateToken, async (req: Request, re
  *         description: Updated media record
  */
 router.patch('/:mediaId/sort', authenticateToken, async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.userId as string;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const userId = req.user?.userId as string;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
 
-    const sortOrder = Number(req.body.sortOrder);
-    if (!Number.isInteger(sortOrder) || sortOrder < 0) {
-        res.status(400).json({ error: 'VALIDATION_ERROR', message: 'sortOrder must be a non-negative integer' });
-        return;
-    }
+  const sortOrder = Number(req.body.sortOrder);
+  if (!Number.isInteger(sortOrder) || sortOrder < 0) {
+    res.status(400).json({ error: 'VALIDATION_ERROR', message: 'sortOrder must be a non-negative integer' });
+    return;
+  }
 
-    const media = await prisma.sellerMedia.findUnique({ where: { id: req.params.mediaId as string } });
-    if (!media) { res.status(404).json({ error: 'NOT_FOUND', message: 'Media not found' }); return; }
+  const media = await prisma.sellerMedia.findUnique({ where: { id: req.params.mediaId as string } });
+  if (!media) {
+    res.status(404).json({ error: 'NOT_FOUND', message: 'Media not found' });
+    return;
+  }
 
-    const check = await assertSellerOwner(media.sellerId, userId);
-    if (!check.ok) { res.status(check.status).json({ error: check.error, message: check.message }); return; }
+  const check = await assertSellerOwner(media.sellerId, userId);
+  if (!check.ok) {
+    res.status(check.status).json({ error: check.error, message: check.message });
+    return;
+  }
 
-    const updated = await prisma.sellerMedia.update({ where: { id: media.id }, data: { sortOrder } });
-    res.status(200).json(updated);
+  const updated = await prisma.sellerMedia.update({ where: { id: media.id }, data: { sortOrder } });
+  res.status(200).json(updated);
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -522,58 +597,67 @@ router.patch('/:mediaId/sort', authenticateToken, async (req: Request, res: Resp
  *         description: Deleted successfully
  */
 router.delete('/:mediaId', authenticateToken, async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.userId as string;
-    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+  const userId = req.user?.userId as string;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
 
-    const media = await prisma.sellerMedia.findUnique({ where: { id: req.params.mediaId as string } });
-    if (!media) { res.status(404).json({ error: 'NOT_FOUND', message: 'Media not found' }); return; }
+  const media = await prisma.sellerMedia.findUnique({ where: { id: req.params.mediaId as string } });
+  if (!media) {
+    res.status(404).json({ error: 'NOT_FOUND', message: 'Media not found' });
+    return;
+  }
 
-    const check = await assertSellerOwner(media.sellerId, userId);
-    if (!check.ok) { res.status(check.status).json({ error: check.error, message: check.message }); return; }
+  const check = await assertSellerOwner(media.sellerId, userId);
+  if (!check.ok) {
+    res.status(check.status).json({ error: check.error, message: check.message });
+    return;
+  }
 
-    await deleteFile(media.storageProvider, media.storageKey);
-    await prisma.sellerMedia.delete({ where: { id: media.id } });
+  await deleteFile(media.storageProvider, media.storageKey);
+  await prisma.sellerMedia.delete({ where: { id: media.id } });
 
-    // Auto-promote next image if the deleted one was primary
-    if (media.isPrimary) {
-        const next = await prisma.sellerMedia.findFirst({
-            where: { sellerId: media.sellerId, entityType: media.entityType, entityId: media.entityId ?? undefined },
-            orderBy: { sortOrder: 'asc' },
-        });
-        if (next) {
-            await prisma.sellerMedia.update({ where: { id: next.id }, data: { isPrimary: true } });
-            await syncPrimaryUrl(next.entityType, next.entityId ?? undefined, next.sellerId, next.publicUrl);
-        } else {
-            await syncPrimaryUrl(media.entityType, media.entityId ?? undefined, media.sellerId, '');
-        }
+  // Auto-promote next image if the deleted one was primary
+  if (media.isPrimary) {
+    const next = await prisma.sellerMedia.findFirst({
+      where: { sellerId: media.sellerId, entityType: media.entityType, entityId: media.entityId ?? undefined },
+      orderBy: { sortOrder: 'asc' },
+    });
+    if (next) {
+      await prisma.sellerMedia.update({ where: { id: next.id }, data: { isPrimary: true } });
+      await syncPrimaryUrl(next.entityType, next.entityId ?? undefined, next.sellerId, next.publicUrl);
+    } else {
+      await syncPrimaryUrl(media.entityType, media.entityId ?? undefined, media.sellerId, '');
     }
+  }
 
-    // Re-sync array fields for work photos and product images
-    if (media.entityType === 'seller_work_photo') {
-        const remaining = await prisma.sellerMedia.findMany({
-            where: { sellerId: media.sellerId, entityType: 'seller_work_photo' },
-            orderBy: { sortOrder: 'asc' },
-        });
-        await prisma.seller.update({
-            where: { id: media.sellerId },
-            data: { workPhotos: remaining.map((m) => m.publicUrl) },
-        });
-    } else if (media.entityType === 'product' && media.entityId) {
-        const remaining = await prisma.sellerMedia.findMany({
-            where: { sellerId: media.sellerId, entityType: 'product', entityId: media.entityId },
-            orderBy: { sortOrder: 'asc' },
-        });
-        const primary = remaining.find((m: any) => m.isPrimary) ?? remaining[0];
-        await prisma.product.update({
-            where: { id: media.entityId },
-            data: {
-                images: remaining.map((m: any) => m.publicUrl),
-                primaryImage: primary?.publicUrl ?? null,
-            },
-        });
-    }
+  // Re-sync array fields for work photos and product images
+  if (media.entityType === 'seller_work_photo') {
+    const remaining = await prisma.sellerMedia.findMany({
+      where: { sellerId: media.sellerId, entityType: 'seller_work_photo' },
+      orderBy: { sortOrder: 'asc' },
+    });
+    await prisma.seller.update({
+      where: { id: media.sellerId },
+      data: { workPhotos: remaining.map((m) => m.publicUrl) },
+    });
+  } else if (media.entityType === 'product' && media.entityId) {
+    const remaining = await prisma.sellerMedia.findMany({
+      where: { sellerId: media.sellerId, entityType: 'product', entityId: media.entityId },
+      orderBy: { sortOrder: 'asc' },
+    });
+    const primary = remaining.find((m: any) => m.isPrimary) ?? remaining[0];
+    await prisma.product.update({
+      where: { id: media.entityId },
+      data: {
+        images: remaining.map((m: any) => m.publicUrl),
+        primaryImage: primary?.publicUrl ?? null,
+      },
+    });
+  }
 
-    res.status(200).json({ message: 'Deleted successfully' });
+  res.status(200).json({ message: 'Deleted successfully' });
 });
 
 export default router;

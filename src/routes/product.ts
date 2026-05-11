@@ -25,45 +25,51 @@ const router = Router();
  *         description: Internal server error
  */
 router.get('/:id', async (req: Request, res: Response): Promise<void> => {
-    try {
-        const id = req.params.id as string;
+  try {
+    const id = req.params.id as string;
 
-        const product = await prisma.product.findUnique({
-            where: { id },
-            include: {
-                seller: {
-                    select: {
-                        id: true,
-                        name: true,
-                        avatarUrl: true,
-                        pickupDays: true,
-                        pickupStartTime: true,
-                        pickupEndTime: true
-                    }
-                }
-            }
-        });
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+            pickupDays: true,
+            pickupStartTime: true,
+            pickupEndTime: true,
+          },
+        },
+      },
+    });
 
-        if (!product) {
-            res.status(404).json({ error: 'Product not found' });
-            return;
-        }
+    if (!product) {
+      res.status(404).json({ error: 'Product not found' });
+      return;
+    }
 
-        const mappedProduct = {
-            ...product,
-            pickupWindows: product.pickupWindows ? product.pickupWindows : (product.seller.pickupDays ? [{
+    const mappedProduct = {
+      ...product,
+      pickupWindows: product.pickupWindows
+        ? product.pickupWindows
+        : product.seller.pickupDays
+          ? [
+              {
                 days: product.seller.pickupDays.split(',').map((d: string) => d.trim()),
                 startTime: product.seller.pickupStartTime,
                 endTime: product.seller.pickupEndTime,
-                formatted: `${product.seller.pickupDays} ${product.seller.pickupStartTime} - ${product.seller.pickupEndTime}`
-            }] : [])
-        };
+                formatted: `${product.seller.pickupDays} ${product.seller.pickupStartTime} - ${product.seller.pickupEndTime}`,
+              },
+            ]
+          : [],
+    };
 
-        res.status(200).json(mappedProduct);
-    } catch (error) {
-        console.error('Error fetching product details:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+    res.status(200).json(mappedProduct);
+  } catch (error) {
+    console.error('Error fetching product details:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 export default router;

@@ -11,7 +11,7 @@ const VALID_DAY_CODES = new Set(['M', 'U', 'W', 'T', 'F', 'S', 'X']);
  * M=Monday, U=Tuesday, W=Wednesday, T=Thursday, F=Friday, S=Saturday, X=Sunday
  */
 function expandWeekOfDays(weekOfDays: string): string[] {
-    return weekOfDays.split('').filter((c) => VALID_DAY_CODES.has(c));
+  return weekOfDays.split('').filter((c) => VALID_DAY_CODES.has(c));
 }
 
 /**
@@ -19,29 +19,29 @@ function expandWeekOfDays(weekOfDays: string): string[] {
  * All days share the same startTime / endTime from the business_hours block.
  */
 async function upsertBusinessHours(
-    sellerId: string,
-    businessHours: { weekOfDays: string; startTime: string; endTime: string; isOpen?: boolean }
+  sellerId: string,
+  businessHours: { weekOfDays: string; startTime: string; endTime: string; isOpen?: boolean },
 ) {
-    const dayCodes = expandWeekOfDays(businessHours.weekOfDays);
-    await Promise.all(
-        dayCodes.map((dayCode) =>
-            (prisma as any).sellerBusinessHours.upsert({
-                where: { sellerId_dayCode: { sellerId, dayCode } },
-                create: {
-                    sellerId,
-                    dayCode,
-                    startTime: businessHours.startTime,
-                    endTime: businessHours.endTime,
-                    isOpen: businessHours.isOpen ?? true,
-                },
-                update: {
-                    startTime: businessHours.startTime,
-                    endTime: businessHours.endTime,
-                    isOpen: businessHours.isOpen ?? true,
-                },
-            })
-        )
-    );
+  const dayCodes = expandWeekOfDays(businessHours.weekOfDays);
+  await Promise.all(
+    dayCodes.map((dayCode) =>
+      (prisma as any).sellerBusinessHours.upsert({
+        where: { sellerId_dayCode: { sellerId, dayCode } },
+        create: {
+          sellerId,
+          dayCode,
+          startTime: businessHours.startTime,
+          endTime: businessHours.endTime,
+          isOpen: businessHours.isOpen ?? true,
+        },
+        update: {
+          startTime: businessHours.startTime,
+          endTime: businessHours.endTime,
+          isOpen: businessHours.isOpen ?? true,
+        },
+      }),
+    ),
+  );
 }
 
 /**
@@ -49,32 +49,29 @@ async function upsertBusinessHours(
  * Input shape: { sampling: { enable: true, weekly_sample: 10 }, delivery: { ... } }
  * The `enable` property maps to `enabled`; the rest becomes the JSON `config`.
  */
-async function upsertFeatures(
-    sellerId: string,
-    features: Record<string, { enable: boolean; [key: string]: any }>
-) {
-    await Promise.all(
-        Object.entries(features).map(([featureKey, featureVal]) => {
-            const { enable, ...config } = featureVal;
-            return (prisma as any).sellerFeature.upsert({
-                where: { sellerId_featureKey: { sellerId, featureKey } },
-                create: { sellerId, featureKey, enabled: enable, config },
-                update: { enabled: enable, config },
-            });
-        })
-    );
+async function upsertFeatures(sellerId: string, features: Record<string, { enable: boolean; [key: string]: any }>) {
+  await Promise.all(
+    Object.entries(features).map(([featureKey, featureVal]) => {
+      const { enable, ...config } = featureVal;
+      return (prisma as any).sellerFeature.upsert({
+        where: { sellerId_featureKey: { sellerId, featureKey } },
+        create: { sellerId, featureKey, enabled: enable, config },
+        update: { enabled: enable, config },
+      });
+    }),
+  );
 }
 
 /** Return the full seller payload with user, businessHours, and features included. */
 async function getSellerPayload(id: string) {
-    return (prisma as any).seller.findUnique({
-        where: { id },
-        include: {
-            user: { select: { name: true, email: true } },
-            businessHours: { orderBy: { dayCode: 'asc' } },
-            features: { orderBy: { featureKey: 'asc' } },
-        },
-    });
+  return (prisma as any).seller.findUnique({
+    where: { id },
+    include: {
+      user: { select: { name: true, email: true } },
+      businessHours: { orderBy: { dayCode: 'asc' } },
+      features: { orderBy: { featureKey: 'asc' } },
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -101,18 +98,18 @@ async function getSellerPayload(id: string) {
  *         description: Internal server error
  */
 router.get('/:id', async (req: Request, res: Response): Promise<void> => {
-    try {
-        const id = req.params.id as string;
-        const seller = await getSellerPayload(id);
-        if (!seller) {
-            res.status(404).json({ error: 'Business not found' });
-            return;
-        }
-        res.status(200).json(seller);
-    } catch (error) {
-        console.error('Error fetching business:', error);
-        res.status(500).json({ error: 'Internal server error' });
+  try {
+    const id = req.params.id as string;
+    const seller = await getSellerPayload(id);
+    if (!seller) {
+      res.status(404).json({ error: 'Business not found' });
+      return;
     }
+    res.status(200).json(seller);
+  } catch (error) {
+    console.error('Error fetching business:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -155,53 +152,53 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
  *         description: Internal server error
  */
 router.post('/', async (req: Request, res: Response): Promise<void> => {
-    try {
-        const { userId, name, serviceType, description } = req.body;
+  try {
+    const { userId, name, serviceType, description } = req.body;
 
-        if (!userId || !name || !description) {
-            res.status(400).json({ error: 'userId, name, and description are required' });
-            return;
-        }
-
-        // Verify user exists
-        const user = await prisma.user.findUnique({ where: { id: userId as string } });
-        if (!user) {
-            res.status(400).json({ error: `User not found: ${userId}` });
-            return;
-        }
-
-        // Check for existing seller
-        const existing = await prisma.seller.findUnique({ where: { userId: userId as string } });
-        if (existing) {
-            res.status(409).json({
-                error: 'A seller profile already exists for this user',
-                sellerId: existing.id,
-            });
-            return;
-        }
-
-        const seller = await (prisma as any).seller.create({
-            data: {
-                userId,
-                name,
-                description,
-                serviceType: serviceType ?? null,
-                status: 'draft',
-                latitude: 0,
-                longitude: 0,
-            },
-            include: {
-                user: { select: { name: true, email: true } },
-                businessHours: true,
-                features: true,
-            },
-        });
-
-        res.status(201).json(seller);
-    } catch (error) {
-        console.error('Error creating business (section 1):', error);
-        res.status(500).json({ error: 'Internal server error' });
+    if (!userId || !name || !description) {
+      res.status(400).json({ error: 'userId, name, and description are required' });
+      return;
     }
+
+    // Verify user exists
+    const user = await prisma.user.findUnique({ where: { id: userId as string } });
+    if (!user) {
+      res.status(400).json({ error: `User not found: ${userId}` });
+      return;
+    }
+
+    // Check for existing seller
+    const existing = await prisma.seller.findUnique({ where: { userId: userId as string } });
+    if (existing) {
+      res.status(409).json({
+        error: 'A seller profile already exists for this user',
+        sellerId: existing.id,
+      });
+      return;
+    }
+
+    const seller = await (prisma as any).seller.create({
+      data: {
+        userId,
+        name,
+        description,
+        serviceType: serviceType ?? null,
+        status: 'draft',
+        latitude: 0,
+        longitude: 0,
+      },
+      include: {
+        user: { select: { name: true, email: true } },
+        businessHours: true,
+        features: true,
+      },
+    });
+
+    res.status(201).json(seller);
+  } catch (error) {
+    console.error('Error creating business (section 1):', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -256,41 +253,41 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
  *         description: Internal server error
  */
 router.put('/:id/section2', async (req: Request, res: Response): Promise<void> => {
-    try {
-        const id = req.params.id as string;
-        const { workPermit, business_hours, features } = req.body;
+  try {
+    const id = req.params.id as string;
+    const { workPermit, business_hours, features } = req.body;
 
-        const existing = await prisma.seller.findUnique({ where: { id } });
-        if (!existing) {
-            res.status(404).json({ error: 'Business not found' });
-            return;
-        }
-
-        // Update scalar fields + advance status
-        await (prisma as any).seller.update({
-            where: { id },
-            data: {
-                ...(workPermit !== undefined && { workPermit }),
-                status: 'review',
-            },
-        });
-
-        // Upsert business hours
-        if (business_hours?.weekOfDays) {
-            await upsertBusinessHours(id, business_hours);
-        }
-
-        // Upsert features
-        if (features && typeof features === 'object') {
-            await upsertFeatures(id, features);
-        }
-
-        const updated = await getSellerPayload(id);
-        res.status(200).json(updated);
-    } catch (error) {
-        console.error('Error updating business (section 2):', error);
-        res.status(500).json({ error: 'Internal server error' });
+    const existing = await prisma.seller.findUnique({ where: { id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Business not found' });
+      return;
     }
+
+    // Update scalar fields + advance status
+    await (prisma as any).seller.update({
+      where: { id },
+      data: {
+        ...(workPermit !== undefined && { workPermit }),
+        status: 'review',
+      },
+    });
+
+    // Upsert business hours
+    if (business_hours?.weekOfDays) {
+      await upsertBusinessHours(id, business_hours);
+    }
+
+    // Upsert features
+    if (features && typeof features === 'object') {
+      await upsertFeatures(id, features);
+    }
+
+    const updated = await getSellerPayload(id);
+    res.status(200).json(updated);
+  } catch (error) {
+    console.error('Error updating business (section 2):', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -332,41 +329,41 @@ router.put('/:id/section2', async (req: Request, res: Response): Promise<void> =
  *         description: Internal server error
  */
 router.put('/:id/section3', async (req: Request, res: Response): Promise<void> => {
-    try {
-        const id = req.params.id as string;
-        const { workPermit, business_hours, features } = req.body;
+  try {
+    const id = req.params.id as string;
+    const { workPermit, business_hours, features } = req.body;
 
-        const existing = await prisma.seller.findUnique({ where: { id } });
-        if (!existing) {
-            res.status(404).json({ error: 'Business not found' });
-            return;
-        }
-
-        // Update scalar fields + advance status to submitted
-        await (prisma as any).seller.update({
-            where: { id },
-            data: {
-                ...(workPermit !== undefined && { workPermit }),
-                status: 'submitted',
-            },
-        });
-
-        // Upsert business hours (allow last-minute changes)
-        if (business_hours?.weekOfDays) {
-            await upsertBusinessHours(id, business_hours);
-        }
-
-        // Upsert features (allow last-minute changes)
-        if (features && typeof features === 'object') {
-            await upsertFeatures(id, features);
-        }
-
-        const updated = await getSellerPayload(id);
-        res.status(200).json(updated);
-    } catch (error) {
-        console.error('Error submitting business (section 3):', error);
-        res.status(500).json({ error: 'Internal server error' });
+    const existing = await prisma.seller.findUnique({ where: { id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Business not found' });
+      return;
     }
+
+    // Update scalar fields + advance status to submitted
+    await (prisma as any).seller.update({
+      where: { id },
+      data: {
+        ...(workPermit !== undefined && { workPermit }),
+        status: 'submitted',
+      },
+    });
+
+    // Upsert business hours (allow last-minute changes)
+    if (business_hours?.weekOfDays) {
+      await upsertBusinessHours(id, business_hours);
+    }
+
+    // Upsert features (allow last-minute changes)
+    if (features && typeof features === 'object') {
+      await upsertFeatures(id, features);
+    }
+
+    const updated = await getSellerPayload(id);
+    res.status(200).json(updated);
+  } catch (error) {
+    console.error('Error submitting business (section 3):', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 export default router;
