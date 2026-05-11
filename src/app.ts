@@ -42,7 +42,17 @@ app.use('/api/users/me', chatRouter);
 app.use('/api/businesses', businessApiRouter);
 app.use('/api/media', mediaRouter);
 
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use(
+  '/api-docs',
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customCssUrl: 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.1.0/swagger-ui.min.css',
+    customJs: [
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.1.0/swagger-ui-bundle.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.1.0/swagger-ui-standalone-preset.js',
+    ],
+  })
+);
 
 // Apollo: lazy-start on first request (required for serverless)
 const apolloServer = new ApolloServer({ typeDefs, resolvers });
