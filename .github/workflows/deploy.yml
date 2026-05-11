@@ -9,7 +9,7 @@ jobs:
   deploy:
     name: Type-check · Lint · Build · Deploy
     runs-on: ubuntu-latest
-
+    environment: Production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
