@@ -38,7 +38,7 @@ jobs:
         run: npm run build
 
       - name: Deploy to Vercel (production)
-        run: npx vercel --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel --prod --yes --token=vcp_8iTLsk8oOXJcRVsXw06JFG1XDFAObNJOs80bsO16htBIWb1JA12R60qf
         env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: team_uVUhFLc3WrTnH7lj1yOhXY2I
+          VERCEL_PROJECT_ID: prj_n0uWkX4dpAgRaGstketzLtqdS7jH
