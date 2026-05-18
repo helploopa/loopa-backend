@@ -359,6 +359,62 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 // ════════════════════════════════════════════════════════════════════════════
 // POST /auth/google — sign in / sign up with a Firebase Google ID token
 // ════════════════════════════════════════════════════════════════════════════
+/**
+ * @swagger
+ * /auth/google:
+ *   post:
+ *     summary: Sign in or sign up with Google via Firebase
+ *     description: Verifies a Firebase Google ID token obtained from the mobile app and returns an app JWT. Creates a new account automatically if the email is not yet registered.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - idToken
+ *             properties:
+ *               idToken:
+ *                 type: string
+ *                 description: Firebase ID token obtained after Google sign-in on the mobile app
+ *                 example: eyJhbGciOiJSUzI1NiIsI...
+ *     responses:
+ *       200:
+ *         description: Authenticated successfully — returns app JWT and user profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                   description: App JWT (7-day expiry)
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     firstName:
+ *                       type: string
+ *                     lastName:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     emailVerified:
+ *                       type: boolean
+ *                     role:
+ *                       type: string
+ *                       example: Customer
+ *                 redirect:
+ *                   type: string
+ *                   example: /discover
+ *       400:
+ *         description: idToken is missing
+ *       401:
+ *         description: Firebase token verification failed
+ *       500:
+ *         description: Authentication failed
+ */
 router.post('/google', async (req: Request, res: Response): Promise<void> => {
   const { idToken } = req.body;
 
