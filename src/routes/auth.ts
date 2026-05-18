@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { prisma } from '../context';
 import * as jwt from 'jsonwebtoken';
 import { sendVerificationEmail } from '../services/emailService';
+import * as admin from 'firebase-admin';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'development-mock-secret';
@@ -352,6 +353,87 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
   } catch (error) {
     console.error('Error in login:', error);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// POST /auth/google — sign in / sign up with a Firebase Google ID token
+// ════════════════════════════════════════════════════════════════════════════
+router.post('/google', async (req: Request, res: Response): Promise<void> => {
+  const { idToken } = req.body;
+
+  if (!idToken) {
+    res.status(400).json({ error: 'idToken is required' });
+    return;
+  }
+
+  let decoded: admin.auth.DecodedIdToken;
+  try {
+    decoded = await admin.auth().verifyIdToken(idToken);
+  } catch (err) {
+    console.error('Google token verification failed:', err);
+    res.status(401).json({ error: 'Invalid Google token' });
+    return;
+  }
+
+  try {
+    const email = (decoded.email ?? '').toLowerCase().trim();
+    const nameParts = (decoded.name ?? '').trim().split(/\s+/);
+    const firstName = nameParts[0] ?? '';
+    const lastName = nameParts.slice(1).join(' ');
+    const googleUid = decoded.uid;
+
+    let user = await prisma.user.findUnique({
+      where: { email },
+      include: { seller: true },
+    });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          email,
+          firstName,
+          lastName,
+          name: decoded.name ?? email,
+          googleUid,
+          emailVerified: true,
+        },
+        include: { seller: true },
+      });
+    } else if (!user.googleUid) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { googleUid },
+        include: { seller: true },
+      });
+    }
+
+    const role = user.seller ? 'Seller' : 'Customer';
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      role,
+      ...(user.seller ? { sellerId: user.seller.id } : {}),
+    };
+
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+
+    res.status(200).json({
+      token,
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        role,
+        ...(user.seller ? { sellerId: user.seller.id } : {}),
+      },
+      redirect: role === 'Customer' ? '/discover' : '/dashboard',
+    });
+  } catch (err) {
+    console.error('Error in /auth/google:', err);
+    res.status(500).json({ error: 'Authentication failed' });
   }
 });
 

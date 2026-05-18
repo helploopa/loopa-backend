@@ -14,7 +14,8 @@ model User {
   firstName                      String?
   lastName                       String?
   name                           String?
-  password                       String
+  password                       String?
+  googleUid                      String?       @unique
   expoPushToken                  String?
   emailVerified                  Boolean       @default(false)
   emailVerificationToken         String?       @unique
