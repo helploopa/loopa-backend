@@ -1,14 +1,13 @@
 import * as admin from 'firebase-admin';
 
-// Initialize Firebase Admin
-// Expects FIREBASE_SERVICE_ACCOUNT to be a path to the service account JSON file
-// or GOOGLE_APPLICATION_CREDENTIALS environment variable.
-
 if (!admin.apps.length) {
   try {
-    admin.initializeApp({
-      credential: admin.credential.applicationDefault(),
-    });
+    const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    const credential = serviceAccountJson
+      ? admin.credential.cert(JSON.parse(serviceAccountJson) as admin.ServiceAccount)
+      : admin.credential.applicationDefault();
+
+    admin.initializeApp({ credential });
     console.log('Firebase Admin initialized successfully');
   } catch (error) {
     console.error('Firebase Admin initialization failed:', error);
