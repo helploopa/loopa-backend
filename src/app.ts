@@ -23,7 +23,30 @@ import { swaggerSpec } from './swagger';
 
 export const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+  'http://localhost:8081',
+  'http://localhost:3000',
+  'http://localhost:19000',
+  'http://localhost:19006',
+  ...(process.env.ALLOWED_ORIGINS?.split(',').map((o) => o.trim()) ?? []),
+];
+
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (native mobile apps, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200,
+};
+
+// Handle OPTIONS preflight for every route before any auth middleware
+app.options('*', cors(corsOptions));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 const mediaRoot = process.env.MEDIA_ROOT ?? '/uploads';
