@@ -1,5 +1,3 @@
-import Supercluster from 'supercluster';
-
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 3958.8; // Radius of Earth in miles
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -323,6 +321,7 @@ export const resolvers = {
         );
       }
 
+      const { default: Supercluster } = await import('supercluster');
       const index = new Supercluster({ radius: 60, maxZoom: 16 });
 
       const features = filteredSellers.map((seller: any) => ({
