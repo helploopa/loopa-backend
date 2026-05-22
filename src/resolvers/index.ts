@@ -1,3 +1,5 @@
+import Supercluster from 'supercluster';
+
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const R = 3958.8; // Radius of Earth in miles
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -98,8 +100,13 @@ export const resolvers = {
       const { latitude, longitude, radius_miles } = args.location;
       const { category } = args;
 
-      // Build filter object
-      const whereClause: any = { NOT: { sampleProduct: true } };
+      // Build filter object — exclude free-sample products and inactive/deleted products
+      const whereClause: any = {
+        sampleProduct: false,
+        sampler: false,
+        isActive: true,
+        deletedAt: null,
+      };
       // If category is provided and not "all" (case insensitive), filter by it
       if (category && category.toLowerCase() !== 'all') {
         whereClause.category = {
@@ -280,6 +287,102 @@ export const resolvers = {
         },
         sellers,
       };
+    },
+
+    mapClusters: async (_parent: any, args: { input: any }, context: any) => {
+      const { latitude, longitude, zoom, bounds, category, radiusKm } = args.input;
+
+      const sellers = await context.prisma.seller.findMany({
+        include: {
+          products: {
+            where: { isActive: true, deletedAt: null },
+            select: {
+              id: true,
+              title: true,
+              price: true,
+              primaryImage: true,
+              images: true,
+              sampleProduct: true,
+              category: true,
+            },
+          },
+          features: {
+            where: { featureKey: 'sampling', enabled: true },
+            select: { id: true },
+          },
+        },
+      });
+
+      let filteredSellers: typeof sellers = radiusKm
+        ? sellers.filter((s: any) => calculateDistance(latitude, longitude, s.latitude, s.longitude) * 1.60934 <= radiusKm)
+        : sellers;
+
+      if (category && category.toLowerCase() !== 'all') {
+        filteredSellers = filteredSellers.filter((s: any) =>
+          s.products.some((p: any) => p.category?.toLowerCase() === category.toLowerCase()),
+        );
+      }
+
+      const index = new Supercluster({ radius: 60, maxZoom: 16 });
+
+      const features = filteredSellers.map((seller: any) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [seller.longitude, seller.latitude] as [number, number] },
+        properties: { seller },
+      }));
+
+      index.load(features);
+
+      const bbox: [number, number, number, number] = bounds
+        ? [bounds.southWestLng, bounds.southWestLat, bounds.northEastLng, bounds.northEastLat]
+        : [-180, -85, 180, 85];
+
+      const results = index.getClusters(bbox, zoom);
+
+      const clusters: any[] = [];
+      const items: any[] = [];
+
+      for (const result of results) {
+        const props = result.properties as any;
+
+        if (props.cluster) {
+          const leaves = index.getLeaves(props.cluster_id as number, Infinity);
+          clusters.push({
+            id: `cluster_${props.cluster_id}`,
+            lat: (result.geometry as any).coordinates[1],
+            lng: (result.geometry as any).coordinates[0],
+            count: props.point_count as number,
+            items: leaves.map((leaf: any) => {
+              const s = leaf.properties.seller;
+              const first = s.products[0];
+              return {
+                makerId: s.id,
+                name: s.name,
+                product: first?.title ?? null,
+                price: first?.price ?? null,
+                image: s.avatarUrl ?? null,
+              };
+            }),
+          });
+        } else {
+          const s = props.seller;
+          const distKm = parseFloat((calculateDistance(latitude, longitude, s.latitude, s.longitude) * 1.60934).toFixed(2));
+          items.push({
+            id: s.id,
+            type: 'maker',
+            lat: s.latitude,
+            lng: s.longitude,
+            name: s.name,
+            image: s.avatarUrl ?? null,
+            category: s.products[0]?.category ?? null,
+            rating: null,
+            distanceKm: distKm,
+            hasFreeSamples: s.features.length > 0 || s.products.some((p: any) => p.sampleProduct),
+          });
+        }
+      }
+
+      return { clusters, items };
     },
 
     nearbyFreeSampleProducts: async (_parent: any, args: { location: any }, context: any) => {

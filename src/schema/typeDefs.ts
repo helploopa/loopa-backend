@@ -101,6 +101,56 @@ export const typeDefs = gql`
     count: Int!
   }
 
+  input MapBoundsInput {
+    northEastLat: Float!
+    northEastLng: Float!
+    southWestLat: Float!
+    southWestLng: Float!
+  }
+
+  input MapClusterInput {
+    latitude: Float!
+    longitude: Float!
+    zoom: Int!
+    bounds: MapBoundsInput
+    category: String
+    radiusKm: Float
+  }
+
+  type ClusterItem {
+    makerId: ID!
+    name: String!
+    product: String
+    price: Float
+    image: String
+  }
+
+  type MapCluster {
+    id: ID!
+    lat: Float!
+    lng: Float!
+    count: Int!
+    items: [ClusterItem!]!
+  }
+
+  type MapItem {
+    id: ID!
+    type: String!
+    lat: Float!
+    lng: Float!
+    name: String!
+    image: String
+    category: String
+    rating: Float
+    distanceKm: Float
+    hasFreeSamples: Boolean!
+  }
+
+  type MapClustersResult {
+    clusters: [MapCluster!]!
+    items: [MapItem!]!
+  }
+
   type Query {
     users: [User!]!
     nearbyProducts(location: LocationInput!, category: String): [Product!]!
@@ -109,6 +159,7 @@ export const typeDefs = gql`
     order(id: ID!): Order
     availableSampleSellers(orderId: ID!): SampleOffer!
     nearbyFreeSampleProducts(location: LocationInput!): FreeSampleResult!
+    mapClusters(input: MapClusterInput!): MapClustersResult!
   }
 
   type FreeSampleSellerInfo {
