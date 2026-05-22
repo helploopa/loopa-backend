@@ -109,9 +109,9 @@ export const typeDefs = gql`
   }
 
   input MapClusterInput {
-    latitude: Float!
-    longitude: Float!
-    zoom: Int!
+    lat: Float!
+    lng: Float!
+    zoom: Int
     bounds: MapBoundsInput
     category: String
     radiusKm: Float

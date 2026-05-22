@@ -288,7 +288,7 @@ export const resolvers = {
     },
 
     mapClusters: async (_parent: any, args: { input: any }, context: any) => {
-      const { latitude, longitude, zoom, bounds, category, radiusKm } = args.input;
+      const { lat: latitude, lng: longitude, zoom = 10, bounds, category, radiusKm } = args.input;
 
       const sellers = await context.prisma.seller.findMany({
         include: {
