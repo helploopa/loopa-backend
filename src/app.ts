@@ -45,7 +45,7 @@ const corsOptions: cors.CorsOptions = {
 };
 
 // Handle OPTIONS preflight for every route before any auth middleware
-app.options('*', cors(corsOptions));
+app.options('/{*path}', cors(corsOptions));
 app.use(cors(corsOptions));
 app.use(express.json());
 
