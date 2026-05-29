@@ -75,7 +75,7 @@ async function saveMediaFiles(
   const created = await Promise.all(
     files.map(async (file, idx) => {
       const storageKey = buildStorageKey(sellerId, entityType, file.originalname, entityId);
-      const { storageProvider, publicUrl } = await uploadFile(file.buffer, storageKey);
+      const { storageProvider, publicUrl } = await uploadFile(file.buffer, storageKey, file.mimetype);
       return prisma.sellerMedia.create({
         data: {
           sellerId,
