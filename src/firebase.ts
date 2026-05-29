@@ -5,13 +5,14 @@ if (!admin.apps.length) {
     const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
     let credential: admin.credential.Credential;
     if (serviceAccountJson) {
-      const parsed = JSON.parse(serviceAccountJson) as admin.ServiceAccount;
-      // Vercel stores env vars as strings — \n in the private key becomes a literal
-      // backslash-n, breaking JWT signing. Replace them with real newlines.
-      if (parsed.privateKey) {
-        (parsed as any).privateKey = parsed.privateKey.replace(/\\n/g, '\n');
+      // JSON.parse gives snake_case keys as-is from the Google service account file.
+      // Vercel stores env vars as plain strings, so the \n in private_key becomes
+      // a literal backslash-n. Replace them with real newlines before signing.
+      const parsed = JSON.parse(serviceAccountJson);
+      if (parsed.private_key) {
+        parsed.private_key = (parsed.private_key as string).replace(/\\n/g, '\n');
       }
-      credential = admin.credential.cert(parsed);
+      credential = admin.credential.cert(parsed as admin.ServiceAccount);
     } else {
       credential = admin.credential.applicationDefault();
     }
