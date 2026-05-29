@@ -23,9 +23,9 @@ async function saveToFirebase(buffer: Buffer, storageKey: string, mimeType: stri
   const bucket = getBucket();
   const file = bucket.file(storageKey);
   await file.save(buffer, { metadata: { contentType: mimeType }, public: true });
-  // Firebase Storage public CDN URL
-  const encoded = storageKey.split('/').map(encodeURIComponent).join('/');
-  return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encoded}?alt=media`;
+  // Use the plain GCS public URL — no Firebase Security Rules involved,
+  // works purely off the ACL set by public:true above.
+  return `https://storage.googleapis.com/${bucket.name}/${storageKey}`;
 }
 
 async function deleteFromFirebase(storageKey: string): Promise<void> {
