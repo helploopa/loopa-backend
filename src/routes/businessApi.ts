@@ -1,23 +1,15 @@
 import { Router, Request, Response } from 'express';
-import path from 'path';
-import fs from 'fs';
 import multer from 'multer';
 import { z } from 'zod';
 import { prisma } from '../context';
 import { authenticateToken } from '../middleware/auth';
+import { uploadFile } from '../services/storageService';
 
 const router = Router();
 
-// ── Image upload (local disk, 5 MB cap) ─────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: path.join(process.cwd(), 'uploads'),
-  filename: (_req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${unique}${path.extname(file.originalname)}`);
-  },
-});
+// ── Image upload (memory storage — files go to Firebase, not disk) ───────────
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (!file.mimetype.startsWith('image/')) return cb(new Error('Only image files are allowed'));
@@ -30,27 +22,29 @@ const upload = multer({
 const LICENSE_VALUES = ['yes', 'no', 'not_required'] as const;
 
 /**
- * If value looks like a base64 data-URL, save to disk and return a server URL.
- * Otherwise return the value as-is (already a URL).
+ * If value is a base64 data-URL, upload to Firebase and return the public URL.
+ * If value is already an https URL, return as-is.
+ * Blob URLs (blob:http://...) are rejected — they are browser-local and cannot be stored.
  */
-function resolveImageField(value: string | undefined, prefix: string): string | undefined {
+async function resolveImageField(value: string | undefined, storageKey: string): Promise<string | undefined> {
   if (!value) return undefined;
-  if (!value.startsWith('data:image/')) return value;
+  if (value.startsWith('blob:')) return undefined; // browser-local, cannot be persisted
+  if (value.startsWith('http://') || value.startsWith('https://')) return value; // already a URL
 
   const matches = value.match(/^data:image\/(\w+);base64,(.+)$/s);
   if (!matches) return undefined;
 
   const ext = matches[1];
-  const data = matches[2];
-  const filename = `${prefix}-${Date.now()}.${ext}`;
-  const filePath = path.join(process.cwd(), 'uploads', filename);
-  fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
-  return `/uploads/${filename}`;
+  const buffer = Buffer.from(matches[2], 'base64');
+  const key = `${storageKey}-${Date.now()}.${ext}`;
+  const { publicUrl } = await uploadFile(buffer, key, `image/${ext}`);
+  return publicUrl;
 }
 
-function resolveImageArray(values: string[] | undefined, prefix: string): string[] {
+async function resolveImageArray(values: string[] | undefined, prefix: string): Promise<string[]> {
   if (!values || !Array.isArray(values)) return [];
-  return values.map((v, i) => resolveImageField(v, `${prefix}-${i}`)).filter((v): v is string => !!v);
+  const resolved = await Promise.all(values.map((v, i) => resolveImageField(v, `${prefix}-${i}`)));
+  return resolved.filter((v): v is string => !!v);
 }
 
 /** Shape returned by all /api/businesses endpoints */
@@ -248,7 +242,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response): Promise
     return;
   }
 
-  const avatarUrl = resolveImageField(avatar, `avatar-${userId}`);
+  const avatarUrl = await resolveImageField(avatar, `avatar-${userId}`);
 
   try {
     const seller = await prisma.seller.create({
@@ -401,7 +395,7 @@ router.patch('/:id/details', authenticateToken, async (req: Request, res: Respon
   }
 
   const { bio, workPhotos, businessLicense, delivery, sampling, orderCapDollars } = parsed.data;
-  const resolvedPhotos = resolveImageArray(workPhotos, `work-${seller!.id}`);
+  const resolvedPhotos = await resolveImageArray(workPhotos, `work-${seller!.id}`);
 
   try {
     const updated = await prisma.seller.update({
@@ -627,8 +621,8 @@ router.patch('/:id', authenticateToken, async (req: Request, res: Response): Pro
     orderCapDollars,
   } = parsed.data;
 
-  const avatarUrl = resolveImageField(avatar, `avatar-${seller!.id}`);
-  const resolvedPhotos = resolveImageArray(workPhotos, `work-${seller!.id}`);
+  const avatarUrl = await resolveImageField(avatar, `avatar-${seller!.id}`);
+  const resolvedPhotos = await resolveImageArray(workPhotos, `work-${seller!.id}`);
 
   try {
     const updated = await prisma.seller.update({
@@ -777,7 +771,8 @@ router.post(
       return;
     }
 
-    const avatarUrl = `/uploads/${req.file.filename}`;
+    const storageKey = `sellers/${seller!.id}/avatar/${Date.now()}_${req.file.originalname}`;
+    const { publicUrl: avatarUrl } = await uploadFile(req.file.buffer, storageKey, req.file.mimetype);
     await prisma.seller.update({ where: { id: seller!.id }, data: { avatarUrl } });
 
     res.status(200).json({ avatarUrl });
@@ -842,8 +837,14 @@ router.post(
       return;
     }
 
-    const newUrls = files.map((f) => `/uploads/${f.filename}`);
-    const combined = [...(seller!.workPhotos ?? []), ...newUrls].slice(0, 10); // cap at 10
+    const newUrls = await Promise.all(
+      files.map(async (f) => {
+        const key = `sellers/${seller!.id}/work-photos/${Date.now()}_${f.originalname}`;
+        const { publicUrl } = await uploadFile(f.buffer, key, f.mimetype);
+        return publicUrl;
+      }),
+    );
+    const combined = [...(seller!.workPhotos ?? []), ...newUrls].slice(0, 10);
 
     await prisma.seller.update({ where: { id: seller!.id }, data: { workPhotos: combined } });
 
