@@ -140,16 +140,20 @@ router.post('/', authenticateToken, async (req: Request, res: Response): Promise
       return;
     }
 
+    const participantSelect = { select: { id: true, name: true, avatarUrl: true } };
+
     const existing = await prisma.chat.findFirst({
       where: {
         participant1Id: p1,
         participant2Id: p2,
         orderId: orderId ?? null,
       },
+      include: { participant1: participantSelect, participant2: participantSelect },
     });
 
     if (existing) {
-      res.status(200).json(existing);
+      const other = existing.participant1Id === userId ? existing.participant2 : existing.participant1;
+      res.status(200).json({ ...existing, otherParticipant: other });
       return;
     }
 
@@ -159,9 +163,11 @@ router.post('/', authenticateToken, async (req: Request, res: Response): Promise
         participant2Id: p2,
         orderId: orderId ?? null,
       },
+      include: { participant1: participantSelect, participant2: participantSelect },
     });
 
-    res.status(201).json(chat);
+    const other = chat.participant1Id === userId ? chat.participant2 : chat.participant1;
+    res.status(201).json({ ...chat, otherParticipant: other });
   } catch (err) {
     console.error('Error creating chat:', err);
     res.status(500).json({ error: 'Internal server error' });
