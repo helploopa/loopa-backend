@@ -35,6 +35,8 @@ const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (native mobile apps, Postman, server-to-server)
     if (!origin) return callback(null, true);
+    // Allow all origins when CORS_ALLOW_ALL is set (Vercel/production deployments)
+    if (process.env.CORS_ALLOW_ALL === 'true') return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
     callback(new Error(`CORS: origin ${origin} not allowed`));
   },
