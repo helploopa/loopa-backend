@@ -140,7 +140,21 @@ router.post('/', authenticateToken, async (req: Request, res: Response): Promise
       return;
     }
 
-    const participantSelect = { select: { id: true, name: true, avatarUrl: true } };
+    const participantSelect = {
+      select: {
+        id: true,
+        name: true,
+        firstName: true,
+        lastName: true,
+        seller: { select: { avatarUrl: true } },
+      },
+    };
+
+    const flattenParticipant = (p: any) => ({
+      id: p.id,
+      name: p.name || [p.firstName, p.lastName].filter(Boolean).join(' ') || 'Unknown',
+      avatarUrl: p.seller?.avatarUrl ?? null,
+    });
 
     const existing = await prisma.chat.findFirst({
       where: {
@@ -152,8 +166,8 @@ router.post('/', authenticateToken, async (req: Request, res: Response): Promise
     });
 
     if (existing) {
-      const other = existing.participant1Id === userId ? existing.participant2 : existing.participant1;
-      res.status(200).json({ ...existing, otherParticipant: other });
+      const rawOther = existing.participant1Id === userId ? existing.participant2 : existing.participant1;
+      res.status(200).json({ ...existing, otherParticipant: flattenParticipant(rawOther) });
       return;
     }
 
@@ -166,8 +180,8 @@ router.post('/', authenticateToken, async (req: Request, res: Response): Promise
       include: { participant1: participantSelect, participant2: participantSelect },
     });
 
-    const other = chat.participant1Id === userId ? chat.participant2 : chat.participant1;
-    res.status(201).json({ ...chat, otherParticipant: other });
+    const rawOther = chat.participant1Id === userId ? chat.participant2 : chat.participant1;
+    res.status(201).json({ ...chat, otherParticipant: flattenParticipant(rawOther) });
   } catch (err) {
     console.error('Error creating chat:', err);
     res.status(500).json({ error: 'Internal server error' });
