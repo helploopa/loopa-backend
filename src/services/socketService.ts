@@ -42,22 +42,22 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
     userSockets.set(userId, socket.id);
     activeChats.set(socket.id, new Set());
 
-    // ── join_conversation ────────────────────────────────────────────────
-    socket.on('join_conversation', async ({ conversationId }: { conversationId: string }) => {
-      const chat = await prisma.chat.findUnique({ where: { id: conversationId } });
+    // ── join-chat ────────────────────────────────────────────────────────
+    socket.on('join-chat', async ({ chatId }: { chatId: string }) => {
+      const chat = await prisma.chat.findUnique({ where: { id: chatId } });
       if (!chat) return;
 
       const isParticipant = chat.participant1Id === userId || chat.participant2Id === userId;
       if (!isParticipant) return;
 
-      socket.join(`chat:${conversationId}`);
-      activeChats.get(socket.id)?.add(conversationId);
+      socket.join(`chat:${chatId}`);
+      activeChats.get(socket.id)?.add(chatId);
     });
 
-    // ── leave_conversation ───────────────────────────────────────────────
-    socket.on('leave_conversation', ({ conversationId }: { conversationId: string }) => {
-      socket.leave(`chat:${conversationId}`);
-      activeChats.get(socket.id)?.delete(conversationId);
+    // ── leave-chat ───────────────────────────────────────────────────────
+    socket.on('leave-chat', ({ chatId }: { chatId: string }) => {
+      socket.leave(`chat:${chatId}`);
+      activeChats.get(socket.id)?.delete(chatId);
     });
 
     // ── send-message ─────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
         ]);
 
         // Broadcast to everyone in the room
-        io.to(`chat:${chatId}`).emit('new_message', { conversationId: chatId, message });
+        io.to(`chat:${chatId}`).emit('new-message', message);
 
         // Push notification only when receiver is not actively in the chat
         if (!isReceiverActive) {
@@ -120,13 +120,9 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
       },
     );
 
-    // ── typing / stop_typing ─────────────────────────────────────────────
-    socket.on('typing', ({ conversationId }: { conversationId: string }) => {
-      socket.to(`chat:${conversationId}`).emit('typing', { userId, conversationId });
-    });
-
-    socket.on('stop_typing', ({ conversationId }: { conversationId: string }) => {
-      socket.to(`chat:${conversationId}`).emit('stop_typing', { userId, conversationId });
+    // ── typing ───────────────────────────────────────────────────────────
+    socket.on('typing', ({ chatId, isTyping }: { chatId: string; isTyping: boolean }) => {
+      socket.to(`chat:${chatId}`).emit('typing', { userId, chatId, isTyping });
     });
 
     // ── message-read ─────────────────────────────────────────────────────
