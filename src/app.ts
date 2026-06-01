@@ -17,6 +17,7 @@ import makerHubRouter from './routes/makerHub';
 import chatRouter from './routes/chat';
 import businessApiRouter from './routes/businessApi';
 import mediaRouter from './routes/media';
+import addressRouter from './routes/address';
 
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './swagger';
@@ -66,6 +67,7 @@ app.use('/api/chats', chatRouter);
 app.use('/api/users/me', chatRouter);
 app.use('/api/businesses', businessApiRouter);
 app.use('/api/media', mediaRouter);
+app.use('/api/addresses', addressRouter);
 
 app.use(
   '/api-docs',

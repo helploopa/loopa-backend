@@ -68,6 +68,7 @@ model Seller {
   businessHours       SellerBusinessHours[]
   features            SellerFeature[]
   media               SellerMedia[]
+  addresses           SellerAddress[]
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -308,5 +309,26 @@ model SellerFeature {
   updatedAt  DateTime @updatedAt
 
   @@unique([sellerId, featureKey])
+}
+
+model SellerAddress {
+  id        String   @id @default(uuid())
+  sellerId  String
+  seller    Seller   @relation(fields: [sellerId], references: [id])
+  type      String   // "business" | "pickup"
+  label     String?  // e.g. "Home Kitchen", "Studio"
+  street    String?
+  city      String?
+  state     String?
+  zipcode   String?
+  country   String   @default("US")
+  latitude  Float
+  longitude Float
+  isDefault Boolean  @default(false) // only meaningful for pickup type
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerId, type])
 }
 

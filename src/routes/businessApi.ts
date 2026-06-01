@@ -79,6 +79,22 @@ function formatBusiness(seller: any) {
     publishedAt: seller.publishedAt ?? null,
     createdAt: seller.createdAt,
     updatedAt: seller.updatedAt,
+    addresses: (seller.addresses ?? []).map((a: any) => ({
+      id: a.id,
+      type: a.type,
+      label: a.label ?? null,
+      street: a.street ?? null,
+      city: a.city ?? null,
+      state: a.state ?? null,
+      zipcode: a.zipcode ?? null,
+      country: a.country,
+      latitude: a.latitude,
+      longitude: a.longitude,
+      isDefault: a.isDefault,
+      isActive: a.isActive,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+    })),
   };
 }
 
@@ -130,8 +146,17 @@ function getUserId(req: Request): string | null {
   return (req.user?.userId as string) ?? null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const SELLER_WITH_ADDRESSES: any = {
+  addresses: { orderBy: [{ type: 'asc' }, { isDefault: 'desc' }, { createdAt: 'asc' }] },
+};
+
+async function fetchWithAddresses(id: string) {
+  return prisma.seller.findUnique({ where: { id }, include: SELLER_WITH_ADDRESSES });
+}
+
 async function findSellerForUser(id: string, userId: string) {
-  const seller = await prisma.seller.findUnique({ where: { id } });
+  const seller = await prisma.seller.findUnique({ where: { id }, include: SELLER_WITH_ADDRESSES });
   if (!seller) return { seller: null, error: 'NOT_FOUND' };
   if (seller.userId !== userId) return { seller: null, error: 'FORBIDDEN' };
   return { seller, error: null };
@@ -161,7 +186,7 @@ router.get('/mine', authenticateToken, async (req: Request, res: Response): Prom
   }
 
   try {
-    const seller = await prisma.seller.findUnique({ where: { userId } });
+    const seller = await prisma.seller.findUnique({ where: { userId }, include: SELLER_WITH_ADDRESSES });
     if (!seller) {
       res.status(404).json({ error: 'NOT_FOUND', message: 'No business found for this user' });
       return;
@@ -264,7 +289,7 @@ router.post('/', authenticateToken, async (req: Request, res: Response): Promise
       },
     });
 
-    res.status(201).json(formatBusiness(seller));
+    res.status(201).json(formatBusiness(await fetchWithAddresses(seller.id)));
   } catch (err) {
     console.error('Error creating business:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Internal server error' });
@@ -471,7 +496,7 @@ router.patch('/:id/details', authenticateToken, async (req: Request, res: Respon
       }
     }
 
-    res.status(200).json(formatBusiness(updated));
+    res.status(200).json(formatBusiness(await fetchWithAddresses(updated.id)));
   } catch (err) {
     console.error('Error updating business details:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Internal server error' });
@@ -545,7 +570,7 @@ router.post('/:id/publish', authenticateToken, async (req: Request, res: Respons
       data: { status: 'active', publishedAt: new Date() },
     });
 
-    res.status(200).json(formatBusiness(updated));
+    res.status(200).json(formatBusiness(await fetchWithAddresses(updated.id)));
   } catch (err) {
     console.error('Error publishing business:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Internal server error' });
@@ -709,7 +734,7 @@ router.patch('/:id', authenticateToken, async (req: Request, res: Response): Pro
       }
     }
 
-    res.status(200).json(formatBusiness(updated));
+    res.status(200).json(formatBusiness(await fetchWithAddresses(updated.id)));
   } catch (err) {
     console.error('Error patching business:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Internal server error' });
