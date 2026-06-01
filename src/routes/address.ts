@@ -92,7 +92,7 @@ router.post('/geocode', authenticateToken, async (req: Request, res: Response): 
     const result = await geocodeAddress({ street, city, state, zipcode, country });
     res.status(200).json(result);
   } catch {
-    res.status(422).json({ error: 'GEOCODE_FAILED', message: 'Could not resolve the address. Please verify it is correct.' });
+    res.status(422).json({ error: 'INVALID_ADDRESS', message: 'The address could not be verified. Please check the street, city, state, and zip code and try again.' });
   }
 });
 
@@ -206,17 +206,23 @@ router.post('/sellers/:sellerId', authenticateToken, async (req: Request, res: R
     }
   }
 
-  // Auto-geocode when lat/lng not provided
-  if (data.latitude === undefined || data.longitude === undefined) {
+  // Resolve lat/lng — geocode when not supplied, reject if address cannot be found
+  let latitude = data.latitude;
+  let longitude = data.longitude;
+
+  if (latitude === undefined || longitude === undefined) {
     try {
       const geo = await geocodeAddress({
         street: data.street, city: data.city,
         state: data.state, zipcode: data.zipcode, country: data.country,
       });
-      data.latitude = geo.lat;
-      data.longitude = geo.lng;
+      latitude = geo.lat;
+      longitude = geo.lng;
     } catch {
-      res.status(422).json({ error: 'GEOCODE_FAILED', message: 'Could not verify the address. Please check the address or provide latitude and longitude manually.' });
+      res.status(422).json({
+        error: 'INVALID_ADDRESS',
+        message: 'The address could not be verified. Please check the street, city, state, and zip code and try again.',
+      });
       return;
     }
   }
@@ -242,8 +248,8 @@ router.post('/sellers/:sellerId', authenticateToken, async (req: Request, res: R
       state: data.state ?? null,
       zipcode: data.zipcode ?? null,
       country: data.country,
-      latitude: data.latitude ?? 0,
-      longitude: data.longitude ?? 0,
+      latitude,
+      longitude,
       isDefault: shouldBeDefault,
       isActive: data.isActive ?? true,
     },
