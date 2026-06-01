@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../context';
 import { authenticateToken } from '../middleware/auth';
+import { geocodeAddress } from '../services/geocodingService';
 
 const router = Router();
 
@@ -9,7 +10,7 @@ const MAX_PICKUP_ADDRESSES = 3;
 
 // ── Zod schema ────────────────────────────────────────────────────────────────
 
-const addressSchema = z.object({
+const baseAddressFields = z.object({
   type: z.enum(['business', 'pickup']),
   label: z.string().max(100).optional(),
   street: z.string().max(255).optional(),
@@ -17,13 +18,19 @@ const addressSchema = z.object({
   state: z.string().max(100).optional(),
   zipcode: z.string().max(20).optional(),
   country: z.string().max(100).default('US'),
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
   isDefault: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
 
-const patchSchema = addressSchema.partial().omit({ type: true });
+// Refinement lives only on the create schema — .partial() cannot be used on refined schemas in Zod v4
+const addressSchema = baseAddressFields.refine(
+  (d) => d.type !== 'pickup' || (d.latitude !== undefined && d.longitude !== undefined),
+  { message: 'latitude and longitude are required for pickup addresses', path: ['latitude'] },
+);
+
+const patchSchema = baseAddressFields.partial().omit({ type: true });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -53,6 +60,43 @@ async function clearOtherDefaults(sellerId: string, excludeId?: string) {
     data: { isDefault: false },
   });
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// POST /api/addresses/geocode
+// Resolve an address string to lat/lng without saving anything
+// ════════════════════════════════════════════════════════════════════════════
+/**
+ * @swagger
+ * /api/addresses/geocode:
+ *   post:
+ *     summary: Geocode an address to lat/lng (does not save)
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               street: { type: string }
+ *               city: { type: string }
+ *               state: { type: string }
+ *               zipcode: { type: string }
+ *               country: { type: string }
+ *     responses:
+ *       200:
+ *         description: Resolved coordinates and formatted address
+ */
+router.post('/geocode', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  const { street, city, state, zipcode, country } = req.body as Record<string, string | undefined>;
+  try {
+    const result = await geocodeAddress({ street, city, state, zipcode, country });
+    res.status(200).json(result);
+  } catch {
+    res.status(422).json({ error: 'GEOCODE_FAILED', message: 'Could not resolve the address. Please verify it is correct.' });
+  }
+});
 
 // ════════════════════════════════════════════════════════════════════════════
 // GET /api/addresses/sellers/:sellerId
@@ -164,6 +208,21 @@ router.post('/sellers/:sellerId', authenticateToken, async (req: Request, res: R
     }
   }
 
+  // Auto-geocode when lat/lng not provided
+  if (data.latitude === undefined || data.longitude === undefined) {
+    try {
+      const geo = await geocodeAddress({
+        street: data.street, city: data.city,
+        state: data.state, zipcode: data.zipcode, country: data.country,
+      });
+      data.latitude = geo.lat;
+      data.longitude = geo.lng;
+    } catch {
+      res.status(422).json({ error: 'GEOCODE_FAILED', message: 'Could not verify the address. Please check the address or provide latitude and longitude manually.' });
+      return;
+    }
+  }
+
   // Auto-set as default if it's the first pickup address or explicitly requested
   const isFirstPickup =
     data.type === 'pickup' &&
@@ -185,8 +244,8 @@ router.post('/sellers/:sellerId', authenticateToken, async (req: Request, res: R
       state: data.state ?? null,
       zipcode: data.zipcode ?? null,
       country: data.country,
-      latitude: data.latitude,
-      longitude: data.longitude,
+      latitude: data.latitude ?? 0,
+      longitude: data.longitude ?? 0,
       isDefault: shouldBeDefault,
       isActive: data.isActive ?? true,
     },
