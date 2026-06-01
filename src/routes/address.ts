@@ -24,11 +24,9 @@ const baseAddressFields = z.object({
   isActive: z.boolean().optional(),
 });
 
-// Refinement lives only on the create schema — .partial() cannot be used on refined schemas in Zod v4
-const addressSchema = baseAddressFields.refine(
-  (d) => d.type !== 'pickup' || (d.latitude !== undefined && d.longitude !== undefined),
-  { message: 'latitude and longitude are required for pickup addresses', path: ['latitude'] },
-);
+// No lat/lng refinement here — the route handler auto-geocodes when they are absent,
+// and returns GEOCODE_FAILED if the address cannot be resolved.
+const addressSchema = baseAddressFields;
 
 const patchSchema = baseAddressFields.partial().omit({ type: true });
 
