@@ -1273,10 +1273,10 @@ export const swaggerSpec = {
               "schema": {
                 "type": "object",
                 "required": [
-                  "expoPushToken"
+                  "fcmToken"
                 ],
                 "properties": {
-                  "expoPushToken": {
+                  "fcmToken": {
                     "type": "string"
                   }
                 }

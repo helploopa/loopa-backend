@@ -1,13 +1,14 @@
-// expo-server-sdk is an ESM-only package; use dynamic import in this CJS module.
+import * as admin from 'firebase-admin';
 import { prisma } from '../context';
+import '../firebase'; // ensure Firebase Admin is initialized
 
 export type PushNotificationData =
-  | { type: 'order'; id: string; status?: string }
-  | { type: 'message'; id: string; chatId: string };
+  | { type: 'new_message'; conversationId: string; participantName?: string; participantAvatar?: string; orderId?: string; orderNumber?: string }
+  | { type: 'order_update'; orderId: string; status?: string };
 
 /**
  * Send a push notification to a single user by their userId.
- * Silently no-ops if the user has no registered Expo push token.
+ * Silently no-ops if the user has no registered FCM token.
  */
 export async function sendPushNotification(
   userId: string,
@@ -17,50 +18,41 @@ export async function sendPushNotification(
 ): Promise<void> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { expoPushToken: true },
+    select: { fcmToken: true },
   });
 
-  if (!user?.expoPushToken) return;
+  if (!user?.fcmToken) return;
 
-  const token = user.expoPushToken;
-
-  // Dynamic import for ESM-only package
-  const { default: Expo } = await import('expo-server-sdk');
-  const expo = new Expo();
-
-  if (!Expo.isExpoPushToken(token)) {
-    console.warn(`Invalid Expo push token for user ${userId}: ${token}`);
-    return;
+  // FCM requires all data values to be strings.
+  const stringData: Record<string, string> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined && value !== null) {
+      stringData[key] = String(value);
+    }
   }
 
-  const message = {
-    to: token,
-    sound: 'default' as const,
-    title,
-    body,
-    data: data as Record<string, unknown>,
-  };
-
   try {
-    const chunks = expo.chunkPushNotifications([message]);
-
-    for (const chunk of chunks) {
-      const tickets = await expo.sendPushNotificationsAsync(chunk);
-      for (const ticket of tickets) {
-        if (ticket.status === 'error') {
-          console.error(`Push notification error for user ${userId}:`, ticket.message);
-          // Clear invalid token from DB
-          if ((ticket as any).details?.error === 'DeviceNotRegistered') {
-            await prisma.user.update({
-              where: { id: userId },
-              data: { expoPushToken: null },
-            });
-          }
-        }
-      }
+    await admin.messaging().send({
+      token: user.fcmToken,
+      notification: { title, body },
+      data: stringData,
+      android: {
+        priority: 'high',
+        notification: { sound: 'default' },
+      },
+      apns: {
+        payload: { aps: { sound: 'default' } },
+      },
+    });
+  } catch (err: any) {
+    console.error(`Failed to send push notification to user ${userId}:`, err?.message ?? err);
+    // Clear stale token so we don't attempt it again.
+    if (
+      err?.code === 'messaging/registration-token-not-registered' ||
+      err?.code === 'messaging/invalid-registration-token'
+    ) {
+      await prisma.user.update({ where: { id: userId }, data: { fcmToken: null } });
     }
-  } catch (err) {
-    console.error(`Failed to send push notification to user ${userId}:`, err);
   }
 }
 
@@ -93,7 +85,7 @@ export async function notifyOrderStatusChange(
     body: `Your order status changed to ${newStatus}.`,
   };
 
-  const data: PushNotificationData = { type: 'order', id: orderId, status: newStatus };
+  const data: PushNotificationData = { type: 'order_update', orderId, status: newStatus };
 
   await Promise.all([
     sendPushNotification(buyerId, notification.title, notification.body, data),

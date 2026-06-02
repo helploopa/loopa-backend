@@ -485,9 +485,9 @@ router.post(
       const senderName = message.sender?.name ?? 'Someone';
       const preview = messageType === 'image' ? '📷 Sent a photo' : (content ?? '');
       sendPushNotification(receiverId, senderName, preview, {
-        type: 'message',
-        id: message.id,
-        chatId: chat.id,
+        type: 'new_message',
+        conversationId: chat.id,
+        participantName: senderName,
       }).catch(console.error);
 
       res.status(201).json(message);
@@ -554,32 +554,8 @@ router.post('/:chatId/mark-read', authenticateToken, async (req: Request, res: R
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// PATCH /api/users/me/push-token  — register Expo push token
+// PATCH /api/users/me/push-token  — register FCM push token
 // ════════════════════════════════════════════════════════════════════════════
-/**
- * @swagger
- * /api/users/me/push-token:
- *   patch:
- *     summary: Register or update Expo push token for the current user
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - expoPushToken
- *             properties:
- *               expoPushToken:
- *                 type: string
- *     responses:
- *       200:
- *         description: Token saved
- *       400:
- *         description: Invalid token
- */
 router.patch('/push-token', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   const userId = req.user?.userId as string;
   if (!userId) {
@@ -587,14 +563,14 @@ router.patch('/push-token', authenticateToken, async (req: Request, res: Respons
     return;
   }
 
-  const { expoPushToken } = req.body;
-  if (!expoPushToken || typeof expoPushToken !== 'string') {
-    res.status(400).json({ error: 'expoPushToken is required' });
+  const { fcmToken } = req.body;
+  if (!fcmToken || typeof fcmToken !== 'string') {
+    res.status(400).json({ error: 'fcmToken is required' });
     return;
   }
 
   try {
-    await prisma.user.update({ where: { id: userId }, data: { expoPushToken } });
+    await prisma.user.update({ where: { id: userId }, data: { fcmToken } });
     res.status(200).json({ message: 'Push token saved' });
   } catch (err) {
     console.error('Error saving push token:', err);

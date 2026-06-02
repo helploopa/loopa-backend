@@ -100,7 +100,7 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
               type,
               readBy: [userId],
             },
-            include: { sender: { select: { id: true, name: true, expoPushToken: true } } },
+            include: { sender: { select: { id: true, name: true } } },
           }),
           prisma.chat.update({
             where: { id: chatId },
@@ -115,7 +115,7 @@ export function initSocketIO(httpServer: HttpServer): SocketIOServer {
         if (!isReceiverActive) {
           const senderName = message.sender?.name ?? 'Someone';
           const preview = type === 'image' ? '📷 Sent a photo' : (content ?? '');
-          await sendPushNotification(receiverId, senderName, preview, { type: 'message', id: message.id, chatId });
+          await sendPushNotification(receiverId, senderName, preview, { type: 'new_message', conversationId: chatId, participantName: senderName });
         }
       },
     );

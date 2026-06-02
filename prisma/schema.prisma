@@ -16,7 +16,7 @@ model User {
   name                           String?
   password                       String?
   googleUid                      String?       @unique
-  expoPushToken                  String?
+  fcmToken                       String?
   emailVerified                  Boolean       @default(false)
   emailVerificationToken         String?       @unique
   emailVerificationTokenExpiry   DateTime?
