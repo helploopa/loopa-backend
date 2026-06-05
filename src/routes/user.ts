@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
+import sharp from 'sharp';
 import { prisma } from '../context';
 import { authenticateToken } from '../middleware/auth';
 import { uploadFile } from '../services/storageService';
@@ -7,12 +8,38 @@ import { sendPushNotification } from '../services/pushNotification';
 
 const router = Router();
 
+// Multer for general profile updates (JSON + optional image)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (!file.mimetype.startsWith('image/')) {
       return cb(new Error('Only image files are allowed'));
+    }
+    cb(null, true);
+  },
+});
+
+// Multer for avatar uploads — permissive MIME filter because iOS may send
+// HEIC files as application/octet-stream; sharp identifies format from the buffer.
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB to accommodate RAW-ish HEIC files
+  fileFilter: (_req, file, cb) => {
+    const accepted = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+      'image/heic',
+      'image/heif',
+      'image/tiff',
+      'image/bmp',
+      'image/gif',
+      'application/octet-stream', // iOS HEIC via some pickers
+    ];
+    if (!accepted.includes(file.mimetype) && !file.mimetype.startsWith('image/')) {
+      return cb(new Error('Unsupported file type. Please upload a photo.'));
     }
     cb(null, true);
   },
@@ -88,14 +115,14 @@ router.get('/', authenticateToken, async (req: Request, res: Response): Promise<
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// PATCH /api/users/me/profile  — update firstName, lastName, profileImage
+// PATCH /api/users/me/profile  — update firstName and/or lastName
 // ════════════════════════════════════════════════════════════════════════════
 /**
  * @swagger
  * /api/users/me/profile:
  *   patch:
  *     summary: Update the current user's profile
- *     description: Update firstName, lastName, and/or profileImage. Send as multipart/form-data when uploading an image; otherwise JSON is accepted for text fields only.
+ *     description: Update firstName and/or lastName. Use POST /api/users/me/avatar to change the profile photo.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -108,17 +135,6 @@ router.get('/', authenticateToken, async (req: Request, res: Response): Promise<
  *                 type: string
  *               lastName:
  *                 type: string
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               firstName:
- *                 type: string
- *               lastName:
- *                 type: string
- *               profileImage:
- *                 type: string
- *                 format: binary
  *     responses:
  *       200:
  *         description: Profile updated
@@ -127,7 +143,7 @@ router.get('/', authenticateToken, async (req: Request, res: Response): Promise<
  *       401:
  *         description: Unauthorized
  */
-router.patch('/profile', authenticateToken, upload.single('profileImage'), async (req: Request, res: Response): Promise<void> => {
+router.patch('/profile', authenticateToken, async (req: Request, res: Response): Promise<void> => {
   const userId = req.user?.userId as string;
   if (!userId) {
     res.status(401).json({ error: 'Unauthorized' });
@@ -147,30 +163,19 @@ router.patch('/profile', authenticateToken, upload.single('profileImage'), async
 
   const updates: Record<string, any> = {};
 
-  if (firstName !== undefined) {
-    updates.firstName = firstName.trim();
-  }
-  if (lastName !== undefined) {
-    updates.lastName = lastName.trim();
-  }
-  if (updates.firstName !== undefined || updates.lastName !== undefined) {
-    const current = await prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true } });
-    const first = updates.firstName ?? current?.firstName ?? '';
-    const last = updates.lastName ?? current?.lastName ?? '';
-    updates.name = `${first} ${last}`.trim();
-  }
-
-  if (req.file) {
-    const ext = req.file.originalname.split('.').pop() ?? 'jpg';
-    const storageKey = `users/${userId}/profile/${Date.now()}.${ext}`;
-    const result = await uploadFile(req.file.buffer, storageKey, req.file.mimetype);
-    updates.profileImage = result.publicUrl;
-  }
+  if (firstName !== undefined) updates.firstName = firstName.trim();
+  if (lastName !== undefined) updates.lastName = lastName.trim();
 
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: 'VALIDATION_ERROR', message: 'No updatable fields provided' });
     return;
   }
+
+  // Keep the denormalised `name` field in sync
+  const current = await prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true } });
+  const first = updates.firstName ?? current?.firstName ?? '';
+  const last = updates.lastName ?? current?.lastName ?? '';
+  updates.name = `${first} ${last}`.trim();
 
   try {
     const user = await prisma.user.update({
@@ -192,6 +197,122 @@ router.patch('/profile', authenticateToken, upload.single('profileImage'), async
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// POST /api/users/me/avatar  — upload / replace profile photo
+//
+// Accepts any photo format from iOS (HEIC/HEIF) and Android (JPEG, PNG, WebP,
+// etc.).  Sharp reads the raw buffer to detect the real format regardless of
+// the MIME type reported by the OS, then normalises to JPEG before storage.
+// ════════════════════════════════════════════════════════════════════════════
+/**
+ * @swagger
+ * /api/users/me/avatar:
+ *   post:
+ *     summary: Upload or replace the user's profile photo
+ *     description: |
+ *       Accepts a single photo via multipart/form-data (field name `avatar`).
+ *       Supported formats: JPEG, PNG, WebP, HEIC/HEIF (iOS default), TIFF, BMP, GIF.
+ *       The image is automatically converted to JPEG, resized to a maximum of
+ *       800 × 800 px (aspect ratio preserved), and saved to configured storage.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - avatar
+ *             properties:
+ *               avatar:
+ *                 type: string
+ *                 format: binary
+ *                 description: Photo file — HEIC, JPEG, PNG, WebP, etc.
+ *     responses:
+ *       200:
+ *         description: Avatar uploaded and profile updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 profileImage:
+ *                   type: string
+ *                   description: Public URL of the new avatar
+ *       400:
+ *         description: No file provided or unsupported format
+ *       401:
+ *         description: Unauthorized
+ *       422:
+ *         description: Image could not be processed
+ */
+router.post(
+  '/avatar',
+  authenticateToken,
+  avatarUpload.single('avatar'),
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.userId as string;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({ error: 'MISSING_FILE', message: 'No avatar file provided. Send a photo in the "avatar" field.' });
+      return;
+    }
+
+    // Convert to JPEG using sharp:
+    //  - .rotate() auto-corrects EXIF orientation (important for phone cameras)
+    //  - .resize() caps at 800×800 without upscaling, maintains aspect ratio
+    //  - sharp auto-detects the real format from the buffer, so HEIC/HEIF works
+    //    even when the MIME type is wrong.
+    let jpegBuffer: Buffer;
+    try {
+      jpegBuffer = await sharp(req.file.buffer)
+        .rotate()                          // honour EXIF orientation
+        .resize(800, 800, {
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: 85, progressive: true })
+        .toBuffer();
+    } catch (err: any) {
+      console.error('Image processing error:', err);
+      res.status(422).json({
+        error: 'IMAGE_PROCESSING_FAILED',
+        message: 'The file could not be processed as an image. Please try a different photo.',
+      });
+      return;
+    }
+
+    const storageKey = `users/${userId}/avatar/${Date.now()}.jpg`;
+
+    try {
+      const { publicUrl } = await uploadFile(jpegBuffer, storageKey, 'image/jpeg');
+
+      const user = await prisma.user.update({
+        where: { id: userId },
+        data: { profileImage: publicUrl },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          profileImage: true,
+          emailVerified: true,
+        },
+      });
+
+      res.status(200).json(user);
+    } catch (err) {
+      console.error('Error uploading avatar:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
 
 // ════════════════════════════════════════════════════════════════════════════
 // PATCH /api/users/me/push-token  — register FCM push token
