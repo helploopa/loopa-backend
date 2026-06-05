@@ -65,7 +65,6 @@ app.use('/auth', authRouter);
 app.use('/business', businessRouter);
 app.use('/api/sellers', makerHubRouter);
 app.use('/api/chats', chatRouter);
-app.use('/api/users/me', chatRouter);
 app.use('/api/users/me', userRouter);
 app.use('/api/businesses', businessApiRouter);
 app.use('/api/media', mediaRouter);

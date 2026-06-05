@@ -3,6 +3,7 @@ import multer from 'multer';
 import { prisma } from '../context';
 import { authenticateToken } from '../middleware/auth';
 import { uploadFile } from '../services/storageService';
+import { sendPushNotification } from '../services/pushNotification';
 
 const router = Router();
 
@@ -189,6 +190,86 @@ router.patch('/profile', authenticateToken, upload.single('profileImage'), async
   } catch (err) {
     console.error('Error updating user profile:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// PATCH /api/users/me/push-token  — register FCM push token
+// ════════════════════════════════════════════════════════════════════════════
+/**
+ * @swagger
+ * /api/users/me/push-token:
+ *   patch:
+ *     summary: Register an FCM push token for the current user
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - fcmToken
+ *             properties:
+ *               fcmToken:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Push token saved
+ *       400:
+ *         description: fcmToken is required
+ *       401:
+ *         description: Unauthorized
+ */
+router.patch('/push-token', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  const userId = req.user?.userId as string;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const { fcmToken } = req.body;
+  if (!fcmToken || typeof fcmToken !== 'string') {
+    res.status(400).json({ error: 'fcmToken is required' });
+    return;
+  }
+
+  try {
+    await prisma.user.update({ where: { id: userId }, data: { fcmToken } });
+    res.status(200).json({ message: 'Push token saved' });
+  } catch (err) {
+    console.error('Error saving push token:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// POST /api/users/me/push-test  — send a test push notification
+// ════════════════════════════════════════════════════════════════════════════
+router.post('/push-test', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  const userId = req.user?.userId as string;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { fcmToken: true } });
+  if (!user?.fcmToken) {
+    res.status(422).json({ error: 'NO_TOKEN', message: 'No FCM token registered for this user. Call PATCH /push-token first.' });
+    return;
+  }
+
+  const { title = 'Test Notification', body = 'Push notifications are working!' } = req.body as {
+    title?: string;
+    body?: string;
+  };
+
+  try {
+    await sendPushNotification(userId, title, body, { type: 'order_update', orderId: 'test' });
+    res.status(200).json({ message: 'Notification sent', fcmToken: user.fcmToken.slice(0, 20) + '...' });
+  } catch (err: any) {
+    res.status(500).json({ error: 'SEND_FAILED', message: err?.message ?? 'Failed to send notification' });
   }
 });
 
