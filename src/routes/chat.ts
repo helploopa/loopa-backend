@@ -1,25 +1,17 @@
 import { Router, Request, Response } from 'express';
-import path from 'path';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { prisma } from '../context';
 import { authenticateToken } from '../middleware/auth';
 import { sendPushNotification } from '../services/pushNotification';
+import { uploadFile } from '../services/storageService';
 
 const router = Router();
 
-// ── Image upload (local disk, 5 MB cap) ─────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: path.join(process.cwd(), 'uploads'),
-  filename: (_req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${unique}${path.extname(file.originalname)}`);
-  },
-});
-
+// ── Image upload (memory buffer → cloud storage) ─────────────────────────────
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
   fileFilter: (_req, file, cb) => {
     if (!file.mimetype.startsWith('image/')) {
@@ -448,7 +440,14 @@ router.post(
     }
 
     const { content, type } = parsed.data;
-    const imageUrl = req.file ? `/uploads/${req.file.filename}` : undefined;
+
+    let imageUrl: string | undefined;
+    if (req.file) {
+      const ext = req.file.originalname.split('.').pop() ?? 'jpg';
+      const storageKey = `chats/${chat.id}/${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
+      const result = await uploadFile(req.file.buffer, storageKey, req.file.mimetype);
+      imageUrl = result.publicUrl;
+    }
 
     if (!content && !imageUrl) {
       res.status(400).json({ error: 'Message must have content or an image' });
@@ -575,6 +574,33 @@ router.patch('/push-token', authenticateToken, async (req: Request, res: Respons
   } catch (err) {
     console.error('Error saving push token:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── POST /api/users/me/push-test  ────────────────────────────────────────────
+// Send a test push notification to the authenticated user's own device.
+// Useful during development to verify the FCM token is valid and delivery works.
+router.post('/push-test', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  const userId = req.user?.userId as string;
+  if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { fcmToken: true } });
+  if (!user?.fcmToken) {
+    res.status(422).json({ error: 'NO_TOKEN', message: 'No FCM token registered for this user. Call PUT /fcm-token first.' });
+    return;
+  }
+
+  const { title = 'Test Notification', body = 'Push notifications are working!' } = req.body as {
+    title?: string;
+    body?: string;
+  };
+
+  try {
+    const { sendPushNotification } = await import('../services/pushNotification.js');
+    await sendPushNotification(userId, title, body, { type: 'order_update', orderId: 'test' });
+    res.status(200).json({ message: 'Notification sent', fcmToken: user.fcmToken.slice(0, 20) + '...' });
+  } catch (err: any) {
+    res.status(500).json({ error: 'SEND_FAILED', message: err?.message ?? 'Failed to send notification' });
   }
 });
 
