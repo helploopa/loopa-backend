@@ -94,6 +94,7 @@ model Product {
   badges            String[]
   pickupWindows     Json? // Stores array of pickup windows
   pickupLocation    Json? // Stores location details
+  content           Json? // Optional rich content sections (highlights, howItWorks, orderInstructions, etc.)
   isFavorite        Boolean     @default(false)
   isActive          Boolean     @default(true)  // false = soft-deleted
   sampler           Boolean     @default(false)

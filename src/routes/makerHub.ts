@@ -240,6 +240,7 @@ router.post('/:sellerId/products', authenticateToken, async (req: Request, res: 
       badges,
       pickupWindows,
       pickupLocation,
+      content,
     } = req.body;
 
     const productTitle = title ?? name;
@@ -272,6 +273,7 @@ router.post('/:sellerId/products', authenticateToken, async (req: Request, res: 
         images: [],
         ...(pickupWindows !== undefined && { pickupWindows }),
         ...(pickupLocation !== undefined && { pickupLocation }),
+        ...(content !== undefined && { content }),
       },
     });
 
@@ -370,6 +372,7 @@ router.patch(
         badges,
         pickupWindows,
         pickupLocation,
+        content,
       } = req.body;
 
       const updateData: Record<string, unknown> = {};
@@ -384,6 +387,7 @@ router.patch(
       if (badges !== undefined) updateData.badges = Array.isArray(badges) ? badges : [];
       if (pickupWindows !== undefined) updateData.pickupWindows = pickupWindows;
       if (pickupLocation !== undefined) updateData.pickupLocation = pickupLocation;
+      if (content !== undefined) updateData.content = content;
 
       const newQty = quantityAvailable ?? stockQuantity;
       if (newQty !== undefined) {
