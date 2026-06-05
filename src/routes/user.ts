@@ -251,7 +251,7 @@ router.patch('/profile', authenticateToken, async (req: Request, res: Response):
 router.post(
   '/avatar',
   authenticateToken,
-  avatarUpload.single('avatar'),
+  avatarUpload.any(),
   async (req: Request, res: Response): Promise<void> => {
     const userId = req.user?.userId as string;
     if (!userId) {
@@ -259,8 +259,12 @@ router.post(
       return;
     }
 
-    if (!req.file) {
-      res.status(400).json({ error: 'MISSING_FILE', message: 'No avatar file provided. Send a photo in the "avatar" field.' });
+    // Accept any field name — mobile clients send under "avatar", "image", "file", "photo", etc.
+    const files = req.files as Express.Multer.File[] | undefined;
+    const file = files?.[0] ?? req.file;
+
+    if (!file) {
+      res.status(400).json({ error: 'MISSING_FILE', message: 'No photo provided. Attach an image file in the request body.' });
       return;
     }
 
@@ -271,7 +275,7 @@ router.post(
     //    even when the MIME type is wrong.
     let jpegBuffer: Buffer;
     try {
-      jpegBuffer = await sharp(req.file.buffer)
+      jpegBuffer = await sharp(file.buffer)
         .rotate()                          // honour EXIF orientation
         .resize(800, 800, {
           fit: 'inside',
