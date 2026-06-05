@@ -17,6 +17,7 @@ model User {
   password                       String?
   googleUid                      String?       @unique
   fcmToken                       String?
+  profileImage                   String?
   emailVerified                  Boolean       @default(false)
   emailVerificationToken         String?       @unique
   emailVerificationTokenExpiry   DateTime?
