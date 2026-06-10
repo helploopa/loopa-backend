@@ -72,6 +72,7 @@ Primary identity for both buyers and sellers.
 | `password` | `TEXT` | nullable | Hashed; null for Google sign-in users |
 | `googleUid` | `TEXT` | UNIQUE, nullable | Firebase/Google OAuth UID |
 | `fcmToken` | `TEXT` | nullable | Firebase Cloud Messaging token for push notifications |
+| `profileImage` | `TEXT` | nullable | Public URL of the user's profile photo |
 | `emailVerified` | `BOOLEAN` | default `false` | |
 | `emailVerificationToken` | `TEXT` | UNIQUE, nullable | One-time email verification token |
 | `emailVerificationTokenExpiry` | `TIMESTAMP` | nullable | |
@@ -146,6 +147,7 @@ Items a seller lists for sale or sampling.
 | `badges` | `TEXT[]` | | UI badges (e.g. "organic", "bestseller") |
 | `pickupWindows` | `JSONB` | nullable | Array of pickup window objects |
 | `pickupLocation` | `JSONB` | nullable | Location details for pickup |
+| `content` | `JSONB` | nullable | Optional rich content sections — `highlights`, `howItWorks`, `orderInstructions`, etc. Each section has a `style` string and a `blocks` array of `{ heading, subheading?, text }` objects |
 | `isFavorite` | `BOOLEAN` | default `false` | |
 | `isActive` | `BOOLEAN` | default `true` | `false` = soft-deleted |
 | `sampler` | `BOOLEAN` | default `false` | Whether product is used as a sampler |

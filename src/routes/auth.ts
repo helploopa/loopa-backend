@@ -4,6 +4,8 @@ import { prisma } from '../context';
 import * as jwt from 'jsonwebtoken';
 import { sendVerificationEmail } from '../services/emailService';
 import * as admin from 'firebase-admin';
+import { authenticateToken } from '../middleware/auth';
+import { revokeToken } from '../middleware/tokenBlocklist';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'development-mock-secret';
@@ -491,6 +493,39 @@ router.post('/google', async (req: Request, res: Response): Promise<void> => {
     console.error('Error in /auth/google:', err);
     res.status(500).json({ error: 'Authentication failed' });
   }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// POST /auth/logout — revoke current JWT and clear all session state
+// ════════════════════════════════════════════════════════════════════════════
+/**
+ * @swagger
+ * /auth/logout:
+ *   post:
+ *     summary: Log out and revoke the current JWT
+ *     description: Adds the current token to the server-side revocation list so it cannot be reused, even before its natural 7-day expiry. The client must also discard the token and any cached session data.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ *       401:
+ *         description: No token provided
+ *       403:
+ *         description: Token invalid or already revoked
+ */
+router.post('/logout', authenticateToken, (req: Request, res: Response): void => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+  if (token) {
+    const decoded = req.user as { exp?: number };
+    // Revoke until the token's natural expiry (or 7 days from now as fallback)
+    const expiresAt = decoded?.exp ? decoded.exp * 1000 : Date.now() + 7 * 24 * 60 * 60 * 1000;
+    revokeToken(token, expiresAt);
+  }
+
+  res.status(200).json({ message: 'Logged out successfully' });
 });
 
 export default router;

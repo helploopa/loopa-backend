@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as jwt from 'jsonwebtoken';
+import { isRevoked } from './tokenBlocklist';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'development-mock-secret';
 
@@ -17,6 +18,11 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
 
   if (!token) {
     res.status(401).json({ error: 'Unauthorized: No token provided' });
+    return;
+  }
+
+  if (isRevoked(token)) {
+    res.status(401).json({ error: 'Unauthorized: Token has been revoked' });
     return;
   }
 
