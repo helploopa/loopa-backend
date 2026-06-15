@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { prisma } from '../context';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, authenticateApiKeyOrJWT } from '../middleware/auth';
 import { uploadFile } from '../services/storageService';
 
 const router = Router();
@@ -205,9 +205,13 @@ router.get('/mine', authenticateToken, async (req: Request, res: Response): Prom
  * /api/businesses:
  *   post:
  *     summary: Step 1 — Create business draft
- *     description: Creates a new seller/business in draft status for the authenticated user.
+ *     description: |
+ *       Creates a new business. Accepts either:
+ *       - Bearer JWT (user auth) — creates a draft business owned by the authenticated user.
+ *       - x-api-key header (admin auth) — creates an unclaimed orphan business with no user linked.
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -232,20 +236,19 @@ router.get('/mine', authenticateToken, async (req: Request, res: Response): Prom
  *               avatar:
  *                 type: string
  *                 description: base64 data-URL or CDN URL
+ *               contactEmail:
+ *                 type: string
+ *                 description: Contact email for unclaimed business outreach (API key auth only)
  *     responses:
  *       201:
- *         description: Draft business created
+ *         description: Business created (draft or unclaimed)
  *       400:
  *         description: Validation error
  *       409:
  *         description: Seller profile already exists for this user
  */
-router.post('/', authenticateToken, async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
-  if (!userId) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+router.post('/', authenticateApiKeyOrJWT, async (req: Request, res: Response): Promise<void> => {
+  const isApiKeyAuth = req.user?.isApiKey === true;
 
   const parsed = step1Schema.safeParse(req.body);
   if (!parsed.success) {
@@ -257,39 +260,68 @@ router.post('/', authenticateToken, async (req: Request, res: Response): Promise
   const { name, tagline, location, latitude, longitude, city, state, zipcode, serviceType, categories, avatar } =
     parsed.data;
 
-  const existing = await prisma.seller.findUnique({ where: { userId } });
-  if (existing) {
-    res.status(409).json({
-      error: 'ALREADY_EXISTS',
-      message: 'A business already exists for this account',
-      id: existing.id,
-    });
-    return;
-  }
-
-  const avatarUrl = await resolveImageField(avatar, `avatar-${userId}`);
-
   try {
-    const seller = await prisma.seller.create({
-      data: {
-        userId,
-        name,
-        description: tagline ?? '',
-        tagline: tagline ?? null,
-        location: location ?? null,
-        latitude: latitude ?? 0,
-        longitude: longitude ?? 0,
-        city: city ?? null,
-        state: state ?? null,
-        zipcode: zipcode ?? null,
-        serviceType: serviceType ?? null,
-        categories: categories ?? [],
-        avatarUrl: avatarUrl ?? null,
-        status: 'draft',
-      },
-    });
+    if (isApiKeyAuth) {
+      // Orphan business — no user linked, status: unclaimed
+      const avatarUrl = await resolveImageField(avatar, `avatar-orphan-${Date.now()}`);
+      const seller = await prisma.seller.create({
+        data: {
+          userId: null,
+          name,
+          description: tagline ?? '',
+          tagline: tagline ?? null,
+          location: location ?? null,
+          latitude: latitude ?? 0,
+          longitude: longitude ?? 0,
+          city: city ?? null,
+          state: state ?? null,
+          zipcode: zipcode ?? null,
+          serviceType: serviceType ?? null,
+          categories: categories ?? [],
+          avatarUrl: avatarUrl ?? null,
+          status: 'unclaimed',
+        },
+      });
+      res.status(201).json(formatBusiness(await fetchWithAddresses(seller.id)));
+    } else {
+      // User-owned business — requires JWT
+      const userId = getUserId(req);
+      if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
 
-    res.status(201).json(formatBusiness(await fetchWithAddresses(seller.id)));
+      const existing = await prisma.seller.findUnique({ where: { userId } });
+      if (existing) {
+        res.status(409).json({
+          error: 'ALREADY_EXISTS',
+          message: 'A business already exists for this account',
+          id: existing.id,
+        });
+        return;
+      }
+
+      const avatarUrl = await resolveImageField(avatar, `avatar-${userId}`);
+      const seller = await prisma.seller.create({
+        data: {
+          userId,
+          name,
+          description: tagline ?? '',
+          tagline: tagline ?? null,
+          location: location ?? null,
+          latitude: latitude ?? 0,
+          longitude: longitude ?? 0,
+          city: city ?? null,
+          state: state ?? null,
+          zipcode: zipcode ?? null,
+          serviceType: serviceType ?? null,
+          categories: categories ?? [],
+          avatarUrl: avatarUrl ?? null,
+          status: 'draft',
+        },
+      });
+      res.status(201).json(formatBusiness(await fetchWithAddresses(seller.id)));
+    }
   } catch (err) {
     console.error('Error creating business:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Internal server error' });
@@ -573,6 +605,76 @@ router.post('/:id/publish', authenticateToken, async (req: Request, res: Respons
     res.status(200).json(formatBusiness(await fetchWithAddresses(updated.id)));
   } catch (err) {
     console.error('Error publishing business:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Internal server error' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// POST /api/businesses/:id/claim  — link an authenticated user to an unclaimed business
+// ════════════════════════════════════════════════════════════════════════════
+/**
+ * @swagger
+ * /api/businesses/{id}/claim:
+ *   post:
+ *     summary: Claim an unclaimed business
+ *     description: Links the authenticated user to an orphan (unclaimed) business, transitioning it to "draft" status. The user must not already own a business.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Business claimed — now in draft status
+ *       404:
+ *         description: Business not found
+ *       409:
+ *         description: Already claimed, or user already owns a business
+ */
+router.post('/:id/claim', authenticateToken, async (req: Request, res: Response): Promise<void> => {
+  const userId = getUserId(req);
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const business = await prisma.seller.findUnique({
+      where: { id: req.params.id as string },
+      include: SELLER_WITH_ADDRESSES,
+    });
+
+    if (!business) {
+      res.status(404).json({ error: 'NOT_FOUND', message: `Business ${req.params.id} not found` });
+      return;
+    }
+
+    if (business.status !== 'unclaimed' || business.userId !== null) {
+      res.status(409).json({ error: 'ALREADY_CLAIMED', message: 'This business has already been claimed' });
+      return;
+    }
+
+    const existingBusiness = await prisma.seller.findUnique({ where: { userId } });
+    if (existingBusiness) {
+      res.status(409).json({
+        error: 'USER_HAS_BUSINESS',
+        message: 'You already own a business on this account',
+        id: existingBusiness.id,
+      });
+      return;
+    }
+
+    const updated = await prisma.seller.update({
+      where: { id: business.id },
+      data: { userId, status: 'draft' },
+    });
+
+    res.status(200).json(formatBusiness(await fetchWithAddresses(updated.id)));
+  } catch (err) {
+    console.error('Error claiming business:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Internal server error' });
   }
 });

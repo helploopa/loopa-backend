@@ -978,7 +978,7 @@ router.post('/:id/approve', authenticateToken, async (req: Request, res: Respons
       return up;
     });
 
-    notifyOrderStatusChange(orderId, order.customerId, seller.id, seller.userId, 'APPROVED').catch(console.error);
+    notifyOrderStatusChange(orderId, order.customerId, seller.id, seller.userId ?? '', 'APPROVED').catch(console.error);
 
     res.status(200).json({ message: 'Order approved successfully.', order: updatedOrder });
   } catch (err) {
@@ -1140,7 +1140,7 @@ router.patch('/:id/propose-changes', authenticateToken, async (req: Request, res
       return up;
     });
 
-    notifyOrderStatusChange(orderId, order.customerId, seller.id, seller.userId, newStatus).catch(console.error);
+    notifyOrderStatusChange(orderId, order.customerId, seller.id, seller.userId ?? '', newStatus).catch(console.error);
 
     const message = isSampleOrder
       ? 'Sample order updated and auto-approved.'
@@ -1265,7 +1265,7 @@ router.patch('/:id/review-changes', authenticateToken, async (req: Request, res:
       .findUnique({ where: { id: order.sellerId }, select: { userId: true } })
       .then((s: any) => {
         if (s)
-          notifyOrderStatusChange(orderId, order.customerId, order.sellerId, s.userId, newOrderStatus).catch(
+          notifyOrderStatusChange(orderId, order.customerId, order.sellerId, s.userId ?? '', newOrderStatus).catch(
             console.error,
           );
       })
@@ -1410,7 +1410,7 @@ router.post(
       });
 
       const notifyStatus = status === 'COMPLETED' ? 'CLOSED' : status;
-      notifyOrderStatusChange(orderId, order.customerId, seller.id, seller.userId, notifyStatus).catch(console.error);
+      notifyOrderStatusChange(orderId, order.customerId, seller.id, seller.userId ?? '', notifyStatus).catch(console.error);
 
       res.status(200).json({ message: `Delivery status updated to ${status}`, order: updatedOrder });
     } catch (err) {
