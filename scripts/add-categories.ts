@@ -7,6 +7,7 @@ const NEW_CATEGORIES: { label: string; icon: string }[] = [
     { label: 'Gifts', icon: '🎁' },
     { label: 'Home Services', icon: '🧰' },
     { label: 'Art', icon: '🎨' },
+    { label: 'Body', icon: '🧼' },
 ];
 
 async function main() {
