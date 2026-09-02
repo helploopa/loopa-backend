@@ -30,6 +30,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:19000',
   'http://localhost:19006',
+  'http://localhost:5173',
   ...(process.env.ALLOWED_ORIGINS?.split(',').map((o) => o.trim()) ?? []),
 ];
 
@@ -40,7 +41,10 @@ const corsOptions: cors.CorsOptions = {
     // Allow all origins when CORS_ALLOW_ALL is set (Vercel/production deployments)
     if (process.env.CORS_ALLOW_ALL === 'true') return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error(`CORS: origin ${origin} not allowed`));
+    // Reject without throwing: passing an Error here propagates as an
+    // unhandled Express error (no error handler is registered), producing
+    // a 500 instead of a clean CORS rejection.
+    callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -94,6 +98,14 @@ app.use('/graphql', async (req, res, next) => {
   return expressMiddleware(apolloServer, {
     context: async ({ req: r }) => context({ req: r }),
   })(req, res, next);
+});
+
+// Catch-all error handler: must be last, and must take 4 args for Express
+// to recognize it as an error handler rather than regular middleware.
+app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (res.headersSent) return next(err);
+  console.error(err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 export default app;
