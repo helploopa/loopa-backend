@@ -162,6 +162,23 @@ async function findSellerForUser(id: string, userId: string) {
   return { seller, error: null };
 }
 
+/**
+ * Same as findSellerForUser, but also accepts API key auth (req.user.isApiKey), which
+ * bypasses the per-user ownership check — an API key acts with admin-level access across
+ * any business, e.g. an n8n workflow driving an unclaimed business through the wizard.
+ */
+async function findSellerForRequest(id: string, req: Request) {
+  if (req.user?.isApiKey === true) {
+    const seller = await prisma.seller.findUnique({ where: { id }, include: SELLER_WITH_ADDRESSES });
+    if (!seller) return { seller: null, error: 'NOT_FOUND' as const };
+    return { seller, error: null };
+  }
+
+  const userId = getUserId(req);
+  if (!userId) return { seller: null, error: 'UNAUTHORIZED' as const };
+  return findSellerForUser(id, userId);
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // GET /api/businesses/mine  — return the authenticated user's own business
 // ════════════════════════════════════════════════════════════════════════════
@@ -338,6 +355,7 @@ router.post('/', authenticateApiKeyOrJWT, async (req: Request, res: Response): P
  *     summary: Get full business profile
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -347,17 +365,19 @@ router.post('/', authenticateApiKeyOrJWT, async (req: Request, res: Response): P
  *     responses:
  *       200:
  *         description: Business profile
+ *       401:
+ *         description: Unauthorized — missing or invalid bearer token / API key
+ *       403:
+ *         description: Access denied — business belongs to a different user
  *       404:
  *         description: Not found
  */
-router.get('/:id', authenticateToken, async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
-  if (!userId) {
+router.get('/:id', authenticateApiKeyOrJWT, async (req: Request, res: Response): Promise<void> => {
+  const { seller, error } = await findSellerForRequest(req.params.id as string, req);
+  if (error === 'UNAUTHORIZED') {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-
-  const { seller, error } = await findSellerForUser(req.params.id as string, userId);
   if (error === 'NOT_FOUND') {
     res.status(404).json({ error: 'NOT_FOUND', message: `Business ${req.params.id} not found` });
     return;
@@ -381,6 +401,7 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response): Promi
  *     description: Adds bio, work photos, delivery/sampling settings, and license info. Status stays "draft".
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -424,17 +445,19 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response): Promi
  *         description: Details updated
  *       400:
  *         description: Validation error
+ *       401:
+ *         description: Unauthorized — missing or invalid bearer token / API key
+ *       403:
+ *         description: Access denied — business belongs to a different user
  *       404:
  *         description: Not found
  */
-router.patch('/:id/details', authenticateToken, async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
-  if (!userId) {
+router.patch('/:id/details', authenticateApiKeyOrJWT, async (req: Request, res: Response): Promise<void> => {
+  const { seller, error } = await findSellerForRequest(req.params.id as string, req);
+  if (error === 'UNAUTHORIZED') {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-
-  const { seller, error } = await findSellerForUser(req.params.id as string, userId);
   if (error === 'NOT_FOUND') {
     res.status(404).json({ error: 'NOT_FOUND', message: `Business ${req.params.id} not found` });
     return;
@@ -546,6 +569,7 @@ router.patch('/:id/details', authenticateToken, async (req: Request, res: Respon
  *     description: Transitions the business from "draft" to "active". Validates required fields are present.
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -557,19 +581,21 @@ router.patch('/:id/details', authenticateToken, async (req: Request, res: Respon
  *         description: Business is now active
  *       400:
  *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized — missing or invalid bearer token / API key
+ *       403:
+ *         description: Access denied — business belongs to a different user
  *       404:
  *         description: Not found
  *       409:
  *         description: Already published
  */
-router.post('/:id/publish', authenticateToken, async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
-  if (!userId) {
+router.post('/:id/publish', authenticateApiKeyOrJWT, async (req: Request, res: Response): Promise<void> => {
+  const { seller, error } = await findSellerForRequest(req.params.id as string, req);
+  if (error === 'UNAUTHORIZED') {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-
-  const { seller, error } = await findSellerForUser(req.params.id as string, userId);
   if (error === 'NOT_FOUND') {
     res.status(404).json({ error: 'NOT_FOUND', message: `Business ${req.params.id} not found` });
     return;
@@ -690,6 +716,7 @@ router.post('/:id/claim', authenticateToken, async (req: Request, res: Response)
  *     description: Accepts any subset of Step 1 or Step 2 fields. Status remains "draft" until /publish is called.
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -701,17 +728,19 @@ router.post('/:id/claim', authenticateToken, async (req: Request, res: Response)
  *         description: Updated business draft
  *       400:
  *         description: Validation error
+ *       401:
+ *         description: Unauthorized — missing or invalid bearer token / API key
+ *       403:
+ *         description: Access denied — business belongs to a different user
  *       404:
  *         description: Not found
  */
-router.patch('/:id', authenticateToken, async (req: Request, res: Response): Promise<void> => {
-  const userId = getUserId(req);
-  if (!userId) {
+router.patch('/:id', authenticateApiKeyOrJWT, async (req: Request, res: Response): Promise<void> => {
+  const { seller, error } = await findSellerForRequest(req.params.id as string, req);
+  if (error === 'UNAUTHORIZED') {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-
-  const { seller, error } = await findSellerForUser(req.params.id as string, userId);
   if (error === 'NOT_FOUND') {
     res.status(404).json({ error: 'NOT_FOUND', message: `Business ${req.params.id} not found` });
     return;
@@ -853,6 +882,7 @@ router.patch('/:id', authenticateToken, async (req: Request, res: Response): Pro
  *     summary: Upload business avatar image
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -874,21 +904,19 @@ router.patch('/:id', authenticateToken, async (req: Request, res: Response): Pro
  */
 router.post(
   '/:id/avatar',
-  authenticateToken,
+  authenticateApiKeyOrJWT,
   upload.single('avatar'),
   async (req: Request, res: Response): Promise<void> => {
-    const userId = getUserId(req);
-    if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-
     if (!req.file) {
       res.status(400).json({ error: 'VALIDATION_ERROR', message: 'avatar file is required' });
       return;
     }
 
-    const { seller, error } = await findSellerForUser(req.params.id as string, userId);
+    const { seller, error } = await findSellerForRequest(req.params.id as string, req);
+    if (error === 'UNAUTHORIZED') {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     if (error === 'NOT_FOUND') {
       res.status(404).json({ error: 'NOT_FOUND', message: `Business ${req.params.id} not found` });
       return;
@@ -916,6 +944,7 @@ router.post(
  *     summary: Upload work photos (max 5)
  *     security:
  *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -939,22 +968,20 @@ router.post(
  */
 router.post(
   '/:id/work-photos',
-  authenticateToken,
+  authenticateApiKeyOrJWT,
   upload.array('photos', 5),
   async (req: Request, res: Response): Promise<void> => {
-    const userId = getUserId(req);
-    if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-
     const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) {
       res.status(400).json({ error: 'VALIDATION_ERROR', message: 'At least one photo is required' });
       return;
     }
 
-    const { seller, error } = await findSellerForUser(req.params.id as string, userId);
+    const { seller, error } = await findSellerForRequest(req.params.id as string, req);
+    if (error === 'UNAUTHORIZED') {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
     if (error === 'NOT_FOUND') {
       res.status(404).json({ error: 'NOT_FOUND', message: `Business ${req.params.id} not found` });
       return;

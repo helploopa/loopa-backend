@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../context';
+import { authenticateApiKeyOrJWT } from '../middleware/auth';
 
 const router = Router();
 
@@ -124,6 +125,9 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
  *       Creates a new seller/business profile in **draft** status.
  *       The `userId` must reference an existing User. `latitude` and `longitude`
  *       default to 0 until set in a later section.
+ *     security:
+ *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -146,12 +150,14 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
  *         description: Business created in draft status
  *       400:
  *         description: Missing required fields or user not found
+ *       401:
+ *         description: Unauthorized — missing or invalid bearer token / API key
  *       409:
  *         description: A seller profile already exists for this user
  *       500:
  *         description: Internal server error
  */
-router.post('/', async (req: Request, res: Response): Promise<void> => {
+router.post('/', authenticateApiKeyOrJWT, async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId, name, serviceType, description } = req.body;
 
@@ -214,6 +220,9 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
  *       The `weekOfDays` string is expanded character-by-character into individual day rows
  *       (M=Mon, U=Tue, W=Wed, T=Thu, F=Fri, S=Sat, X=Sun).
  *       Advances status to **review**.
+ *     security:
+ *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -247,12 +256,14 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
  *     responses:
  *       200:
  *         description: Business updated, status set to review
+ *       401:
+ *         description: Unauthorized — missing or invalid bearer token / API key
  *       404:
  *         description: Business not found
  *       500:
  *         description: Internal server error
  */
-router.put('/:id/section2', async (req: Request, res: Response): Promise<void> => {
+router.put('/:id/section2', authenticateApiKeyOrJWT, async (req: Request, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
     const { workPermit, business_hours, features } = req.body;
@@ -301,6 +312,9 @@ router.put('/:id/section2', async (req: Request, res: Response): Promise<void> =
  *     description: >
  *       Accepts the same payload as Section 2 for any final changes, then advances
  *       the status to **submitted**.
+ *     security:
+ *       - bearerAuth: []
+ *       - apiKeyAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -323,12 +337,14 @@ router.put('/:id/section2', async (req: Request, res: Response): Promise<void> =
  *     responses:
  *       200:
  *         description: Business submitted successfully
+ *       401:
+ *         description: Unauthorized — missing or invalid bearer token / API key
  *       404:
  *         description: Business not found
  *       500:
  *         description: Internal server error
  */
-router.put('/:id/section3', async (req: Request, res: Response): Promise<void> => {
+router.put('/:id/section3', authenticateApiKeyOrJWT, async (req: Request, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
     const { workPermit, business_hours, features } = req.body;

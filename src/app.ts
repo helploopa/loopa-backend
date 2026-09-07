@@ -19,6 +19,7 @@ import businessApiRouter from './routes/businessApi';
 import mediaRouter from './routes/media';
 import addressRouter from './routes/address';
 import userRouter from './routes/user';
+import businessReferralRouter from './routes/businessReferral';
 
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './swagger';
@@ -73,6 +74,7 @@ app.use('/api/users/me', userRouter);
 app.use('/api/businesses', businessApiRouter);
 app.use('/api/media', mediaRouter);
 app.use('/api/addresses', addressRouter);
+app.use('/api/business-referrals', businessReferralRouter);
 
 app.use(
   '/api-docs',

@@ -22,10 +22,57 @@ export const swaggerSpec = {
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
+      },
+      "apiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key"
       }
     }
   },
   "paths": {
+    "/api/addresses/geocode": {
+      "post": {
+        "summary": "Geocode an address to lat/lng (does not save)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "street": {
+                    "type": "string"
+                  },
+                  "city": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  },
+                  "zipcode": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resolved coordinates and formatted address"
+          }
+        }
+      }
+    },
     "/api/addresses/sellers/{sellerId}": {
       "get": {
         "summary": "List all addresses for a seller",
@@ -489,6 +536,28 @@ export const swaggerSpec = {
         }
       }
     },
+    "/auth/logout": {
+      "post": {
+        "summary": "Log out and revoke the current JWT",
+        "description": "Adds the current token to the server-side revocation list so it cannot be reused, even before its natural 7-day expiry. The client must also discard the token and any cached session data.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Logged out successfully"
+          },
+          "401": {
+            "description": "No token provided"
+          },
+          "403": {
+            "description": "Token invalid or already revoked"
+          }
+        }
+      }
+    },
     "/business/{id}": {
       "get": {
         "summary": "Get business wizard state by seller ID",
@@ -520,6 +589,14 @@ export const swaggerSpec = {
       "post": {
         "summary": "Wizard Section 1 — Create business (draft)",
         "description": "Creates a new seller/business profile in **draft** status. The `userId` must reference an existing User. `latitude` and `longitude` default to 0 until set in a later section.\n",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -560,6 +637,9 @@ export const swaggerSpec = {
           "400": {
             "description": "Missing required fields or user not found"
           },
+          "401": {
+            "description": "Unauthorized — missing or invalid bearer token / API key"
+          },
           "409": {
             "description": "A seller profile already exists for this user"
           },
@@ -573,6 +653,14 @@ export const swaggerSpec = {
       "put": {
         "summary": "Wizard Section 2 — Add business details (review)",
         "description": "Adds `workPermit`, business hours, and feature flags to an existing draft business. The `weekOfDays` string is expanded character-by-character into individual day rows (M=Mon, U=Tue, W=Wed, T=Thu, F=Fri, S=Sat, X=Sun). Advances status to **review**.\n",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
         "parameters": [
           {
             "in": "path",
@@ -623,6 +711,9 @@ export const swaggerSpec = {
           "200": {
             "description": "Business updated, status set to review"
           },
+          "401": {
+            "description": "Unauthorized — missing or invalid bearer token / API key"
+          },
           "404": {
             "description": "Business not found"
           },
@@ -636,6 +727,14 @@ export const swaggerSpec = {
       "put": {
         "summary": "Wizard Section 3 — Submit business",
         "description": "Accepts the same payload as Section 2 for any final changes, then advances the status to **submitted**.\n",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ],
         "parameters": [
           {
             "in": "path",
@@ -671,6 +770,9 @@ export const swaggerSpec = {
           "200": {
             "description": "Business submitted successfully"
           },
+          "401": {
+            "description": "Unauthorized — missing or invalid bearer token / API key"
+          },
           "404": {
             "description": "Business not found"
           },
@@ -701,10 +803,13 @@ export const swaggerSpec = {
     "/api/businesses": {
       "post": {
         "summary": "Step 1 — Create business draft",
-        "description": "Creates a new seller/business in draft status for the authenticated user.",
+        "description": "Creates a new business. Accepts either:\n- Bearer JWT (user auth) — creates a draft business owned by the authenticated user.\n- x-api-key header (admin auth) — creates an unclaimed orphan business with no user linked.\n",
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
           }
         ],
         "requestBody": {
@@ -742,6 +847,10 @@ export const swaggerSpec = {
                   "avatar": {
                     "type": "string",
                     "description": "base64 data-URL or CDN URL"
+                  },
+                  "contactEmail": {
+                    "type": "string",
+                    "description": "Contact email for unclaimed business outreach (API key auth only)"
                   }
                 }
               }
@@ -750,7 +859,7 @@ export const swaggerSpec = {
         },
         "responses": {
           "201": {
-            "description": "Draft business created"
+            "description": "Business created (draft or unclaimed)"
           },
           "400": {
             "description": "Validation error"
@@ -767,6 +876,9 @@ export const swaggerSpec = {
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
           }
         ],
         "parameters": [
@@ -783,6 +895,12 @@ export const swaggerSpec = {
           "200": {
             "description": "Business profile"
           },
+          "401": {
+            "description": "Unauthorized — missing or invalid bearer token / API key"
+          },
+          "403": {
+            "description": "Access denied — business belongs to a different user"
+          },
           "404": {
             "description": "Not found"
           }
@@ -794,6 +912,9 @@ export const swaggerSpec = {
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
           }
         ],
         "parameters": [
@@ -813,6 +934,12 @@ export const swaggerSpec = {
           "400": {
             "description": "Validation error"
           },
+          "401": {
+            "description": "Unauthorized — missing or invalid bearer token / API key"
+          },
+          "403": {
+            "description": "Access denied — business belongs to a different user"
+          },
           "404": {
             "description": "Not found"
           }
@@ -826,6 +953,9 @@ export const swaggerSpec = {
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
           }
         ],
         "parameters": [
@@ -899,6 +1029,12 @@ export const swaggerSpec = {
           "400": {
             "description": "Validation error"
           },
+          "401": {
+            "description": "Unauthorized — missing or invalid bearer token / API key"
+          },
+          "403": {
+            "description": "Access denied — business belongs to a different user"
+          },
           "404": {
             "description": "Not found"
           }
@@ -912,6 +1048,9 @@ export const swaggerSpec = {
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
           }
         ],
         "parameters": [
@@ -931,11 +1070,49 @@ export const swaggerSpec = {
           "400": {
             "description": "Missing required fields"
           },
+          "401": {
+            "description": "Unauthorized — missing or invalid bearer token / API key"
+          },
+          "403": {
+            "description": "Access denied — business belongs to a different user"
+          },
           "404": {
             "description": "Not found"
           },
           "409": {
             "description": "Already published"
+          }
+        }
+      }
+    },
+    "/api/businesses/{id}/claim": {
+      "post": {
+        "summary": "Claim an unclaimed business",
+        "description": "Links the authenticated user to an orphan (unclaimed) business, transitioning it to \"draft\" status. The user must not already own a business.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Business claimed — now in draft status"
+          },
+          "404": {
+            "description": "Business not found"
+          },
+          "409": {
+            "description": "Already claimed, or user already owns a business"
           }
         }
       }
@@ -946,6 +1123,9 @@ export const swaggerSpec = {
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
           }
         ],
         "parameters": [
@@ -986,6 +1166,9 @@ export const swaggerSpec = {
         "security": [
           {
             "bearerAuth": []
+          },
+          {
+            "apiKeyAuth": []
           }
         ],
         "parameters": [
@@ -1019,6 +1202,63 @@ export const swaggerSpec = {
         "responses": {
           "200": {
             "description": "Work photo URLs"
+          }
+        }
+      }
+    },
+    "/api/business-referrals": {
+      "post": {
+        "summary": "Refer a neighbour business",
+        "description": "Lets a customer refer a business they know. Either `businessName` or `businessUrl` must be provided. The referring user is taken from the bearer token.\n",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "phone",
+                  "zipcode"
+                ],
+                "properties": {
+                  "businessName": {
+                    "type": "string"
+                  },
+                  "businessUrl": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "zipcode": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Referral saved"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal server error"
           }
         }
       }
@@ -1254,42 +1494,6 @@ export const swaggerSpec = {
           },
           "404": {
             "description": "Chat not found"
-          }
-        }
-      }
-    },
-    "/api/users/me/push-token": {
-      "patch": {
-        "summary": "Register or update Expo push token for the current user",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "fcmToken"
-                ],
-                "properties": {
-                  "fcmToken": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Token saved"
-          },
-          "400": {
-            "description": "Invalid token"
           }
         }
       }
@@ -2915,6 +3119,191 @@ export const swaggerSpec = {
           },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/users/me": {
+      "get": {
+        "summary": "Get the current user's profile",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "firstName": {
+                      "type": "string"
+                    },
+                    "lastName": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "profileImage": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "emailVerified": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
+      }
+    },
+    "/api/users/me/profile": {
+      "patch": {
+        "summary": "Update the current user's profile",
+        "description": "Update firstName and/or lastName. Use POST /api/users/me/avatar to change the profile photo.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "firstName": {
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile updated"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/users/me/avatar": {
+      "post": {
+        "summary": "Upload or replace the user's profile photo",
+        "description": "Accepts a single photo via multipart/form-data (field name `avatar`).\nSupported formats: JPEG, PNG, WebP, HEIC/HEIF (iOS default), TIFF, BMP, GIF.\nThe image is automatically converted to JPEG, resized to a maximum of\n800 × 800 px (aspect ratio preserved), and saved to configured storage.\n",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "avatar"
+                ],
+                "properties": {
+                  "avatar": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Photo file — HEIC, JPEG, PNG, WebP, etc."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Avatar uploaded and profile updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "profileImage": {
+                      "type": "string",
+                      "description": "Public URL of the new avatar"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No file provided or unsupported format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Image could not be processed"
+          }
+        }
+      }
+    },
+    "/api/users/me/push-token": {
+      "patch": {
+        "summary": "Register an FCM push token for the current user",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "fcmToken"
+                ],
+                "properties": {
+                  "fcmToken": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Push token saved"
+          },
+          "400": {
+            "description": "fcmToken is required"
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         }
       }
