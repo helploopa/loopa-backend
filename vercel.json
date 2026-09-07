@@ -3,10 +3,16 @@
   "github": {
     "enabled": false
   },
-  "rewrites": [
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "/api/index.ts"
+      "src": "api/index.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.ts"
     }
   ]
 }
