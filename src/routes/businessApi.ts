@@ -643,7 +643,7 @@ router.post('/:id/publish', authenticateApiKeyOrJWT, async (req: Request, res: R
  * /api/businesses/{id}/claim:
  *   post:
  *     summary: Claim an unclaimed business
- *     description: Links the authenticated user to an orphan (unclaimed) business, transitioning it to "draft" status. The user must not already own a business.
+ *     description: Links the authenticated user to an orphan (unclaimed) business, transitioning it to "draft" status. The user must not already own a business, and must have an approved business claim (see /api/business-claims) for this business.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -655,6 +655,8 @@ router.post('/:id/publish', authenticateApiKeyOrJWT, async (req: Request, res: R
  *     responses:
  *       200:
  *         description: Business claimed — now in draft status
+ *       403:
+ *         description: No approved business claim for this user and business
  *       404:
  *         description: Business not found
  *       409:
@@ -689,6 +691,18 @@ router.post('/:id/claim', authenticateToken, async (req: Request, res: Response)
         error: 'USER_HAS_BUSINESS',
         message: 'You already own a business on this account',
         id: existingBusiness.id,
+      });
+      return;
+    }
+
+    // Ownership must be verified (email + phone) via the n8n claim workflow first
+    const approvedClaim = await prisma.businessClaim.findFirst({
+      where: { businessId: business.id, userId, status: 'approved' },
+    });
+    if (!approvedClaim) {
+      res.status(403).json({
+        error: 'CLAIM_NOT_VERIFIED',
+        message: 'Business ownership has not been verified for this account',
       });
       return;
     }

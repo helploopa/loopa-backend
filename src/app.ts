@@ -20,6 +20,7 @@ import mediaRouter from './routes/media';
 import addressRouter from './routes/address';
 import userRouter from './routes/user';
 import businessReferralRouter from './routes/businessReferral';
+import businessClaimRouter from './routes/businessClaim';
 import { authenticateApiKey } from './middleware/auth';
 import { createMcpRouter } from './mcp/route';
 
@@ -77,6 +78,7 @@ app.use('/api/businesses', businessApiRouter);
 app.use('/api/media', mediaRouter);
 app.use('/api/addresses', addressRouter);
 app.use('/api/business-referrals', businessReferralRouter);
+app.use('/api/business-claims', businessClaimRouter);
 app.use('/mcp', authenticateApiKey, createMcpRouter(app));
 
 app.use(

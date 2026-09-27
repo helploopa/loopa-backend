@@ -351,3 +351,25 @@ model Referbusiness {
   @@index([referredByUserId])
 }
 
+
+model BusinessClaim {
+  id                String    @id @default(uuid())
+  source            String
+  businessId        String
+  userId            String
+  userEmail         String
+  userPhone         String?
+  businessName      String?
+  businessWebsite   String?
+  emailOtpHash      String?
+  emailOtpExpiresAt DateTime?
+  emailOtpAttempts  Int       @default(0)
+  emailVerified     Boolean   @default(false)
+  phoneVerified     Boolean   @default(false)
+  status            String    @default("pending_verification") // pending_verification, approved, rejected, expired, cancelled
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([businessId])
+  @@index([userId])
+}
