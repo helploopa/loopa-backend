@@ -21,6 +21,7 @@ import addressRouter from './routes/address';
 import userRouter from './routes/user';
 import businessReferralRouter from './routes/businessReferral';
 import businessClaimRouter from './routes/businessClaim';
+import claimLinkRouter from './routes/claimLink';
 import { authenticateApiKey } from './middleware/auth';
 import { createMcpRouter } from './mcp/route';
 
@@ -65,6 +66,7 @@ const mediaRoot = process.env.MEDIA_ROOT ?? '/uploads';
 app.use('/media', express.static(mediaRoot));
 
 app.use('/ping', pingRouter);
+app.use('/claim', claimLinkRouter);
 app.use('/seller', sellerRouter);
 app.use('/product', productRouter);
 app.use('/api/orders', orderRouter);
