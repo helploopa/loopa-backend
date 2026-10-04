@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../context';
 import { authenticateToken } from '../middleware/auth';
+import { startBusinessOnboarding } from '../services/businessOnboarding';
 
 const router = Router();
 
@@ -9,11 +10,16 @@ const router = Router();
 
 const referralSchema = z
   .object({
-    businessName: z.string().min(1).max(200).optional(),
-    businessUrl: z.string().url().max(500).optional(),
-    email: z.string().email(),
-    phone: z.string().min(1).max(30),
-    zipcode: z.string().min(1).max(20),
+    businessName: z.string().trim().min(1).max(200).optional(),
+    businessUrl: z
+      .string()
+      .trim()
+      .transform((url) => (/^https?:\/\//i.test(url) ? url : `https://${url}`))
+      .pipe(z.string().url().max(500))
+      .optional(),
+    email: z.string().trim().email(),
+    phone: z.string().trim().min(1).max(30).optional(),
+    zipcode: z.string().trim().min(1).max(20).optional(),
   })
   .refine((data) => !!data.businessName || !!data.businessUrl, {
     message: 'Either businessName or businessUrl is required',
@@ -35,7 +41,9 @@ function getUserId(req: Request): string | null {
  *     description: >
  *       Lets a customer refer a business they know. Either `businessName` or
  *       `businessUrl` must be provided. The referring user is taken from the
- *       bearer token.
+ *       bearer token. Referrals with a website are handed to the n8n onboarding
+ *       workflow, which verifies the site, creates the unclaimed business and
+ *       emails the owner a claim link.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -44,12 +52,13 @@ function getUserId(req: Request): string | null {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [email, phone, zipcode]
+ *             required: [email]
  *             properties:
  *               businessName:
  *                 type: string
  *               businessUrl:
  *                 type: string
+ *                 description: Scheme optional — "www.example.com" is normalised to https://
  *               email:
  *                 type: string
  *               phone:
@@ -89,10 +98,11 @@ router.post('/', authenticateToken, async (req: Request, res: Response): Promise
         businessName: businessName ?? null,
         businessUrl: businessUrl ?? null,
         email,
-        phone,
-        zipcode,
+        phone: phone ?? null,
+        zipcode: zipcode ?? null,
       },
     });
+    if (referral.businessUrl) await startBusinessOnboarding(referral);
     res.status(201).json(referral);
   } catch (error) {
     console.error('Error creating business referral:', error);

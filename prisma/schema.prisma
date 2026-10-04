@@ -342,8 +342,8 @@ model Referbusiness {
   businessName     String?
   businessUrl      String?
   email            String
-  phone            String
-  zipcode          String
+  phone            String?
+  zipcode          String?
   status           String   @default("pending") // pending, contacted, onboarded, rejected
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
