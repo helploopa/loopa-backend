@@ -112,6 +112,7 @@ const step1Schema = z.object({
   serviceType: z.enum(['product', 'service']).optional(),
   categories: z.array(z.string()).optional(),
   avatar: z.string().optional(), // base64 or URL
+  referralId: z.string().min(1).max(64).optional(), // set when the owner arrived from a referral invite
 });
 
 const step2Schema = z.object({
@@ -256,6 +257,9 @@ router.get('/mine', authenticateToken, async (req: Request, res: Response): Prom
  *               contactEmail:
  *                 type: string
  *                 description: Contact email for unclaimed business outreach (API key auth only)
+ *               referralId:
+ *                 type: string
+ *                 description: Referral the owner arrived from (JWT auth only) — marks it "onboarded" and links it to the new business
  *     responses:
  *       201:
  *         description: Business created (draft or unclaimed)
@@ -274,7 +278,7 @@ router.post('/', authenticateApiKeyOrJWT, async (req: Request, res: Response): P
     return;
   }
 
-  const { name, tagline, location, latitude, longitude, city, state, zipcode, serviceType, categories, avatar } =
+  const { name, tagline, location, latitude, longitude, city, state, zipcode, serviceType, categories, avatar, referralId } =
     parsed.data;
 
   try {
@@ -337,6 +341,11 @@ router.post('/', authenticateApiKeyOrJWT, async (req: Request, res: Response): P
           status: 'draft',
         },
       });
+      if (referralId) {
+        await prisma.referbusiness
+          .updateMany({ where: { id: referralId, businessId: null }, data: { status: 'onboarded', businessId: seller.id } })
+          .catch((error) => console.error(`Error linking referral ${referralId} to business ${seller.id}:`, error));
+      }
       res.status(201).json(formatBusiness(await fetchWithAddresses(seller.id)));
     }
   } catch (err) {

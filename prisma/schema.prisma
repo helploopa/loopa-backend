@@ -344,11 +344,13 @@ model Referbusiness {
   email            String
   phone            String?
   zipcode          String?
-  status           String   @default("pending") // pending, contacted, onboarded, rejected
+  status           String   @default("pending") // pending, contacted, onboarded, rejected, duplicate
+  businessId       String? // set when the referred owner adds their business from the invite link
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   @@index([referredByUserId])
+  @@index([email])
 }
 
 

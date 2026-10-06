@@ -6,7 +6,7 @@ const router = Router();
 const BUSINESS_ID = /^[A-Za-z0-9-]{1,64}$/;
 const SUPPORT_EMAIL = 'help.loopa@gmail.com';
 
-const escapeHtml = (value: string) =>
+export const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 interface PageOptions {
@@ -15,7 +15,7 @@ interface PageOptions {
   appUrl?: string;
 }
 
-function renderPage({ title, message, appUrl }: PageOptions) {
+export function renderPage({ title, message, appUrl }: PageOptions) {
   const action = appUrl
     ? `<a class="button" href="${escapeHtml(appUrl)}">Open in Loopa</a>
   <small>Nothing happening? Make sure the Loopa app is installed on this phone, then tap the button.</small>`

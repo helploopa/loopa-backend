@@ -22,6 +22,7 @@ import userRouter from './routes/user';
 import businessReferralRouter from './routes/businessReferral';
 import businessClaimRouter from './routes/businessClaim';
 import claimLinkRouter from './routes/claimLink';
+import joinLinkRouter from './routes/joinLink';
 import { authenticateApiKey } from './middleware/auth';
 import { createMcpRouter } from './mcp/route';
 
@@ -67,6 +68,7 @@ app.use('/media', express.static(mediaRoot));
 
 app.use('/ping', pingRouter);
 app.use('/claim', claimLinkRouter);
+app.use('/join', joinLinkRouter);
 app.use('/seller', sellerRouter);
 app.use('/product', productRouter);
 app.use('/api/orders', orderRouter);
