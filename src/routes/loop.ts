@@ -223,6 +223,7 @@ router.get('/me', authenticateToken, async (req: Request, res: Response): Promis
             id: drop.id,
             name: drop.name,
             hostName: dropHost ? firstNameOf(dropHost) : 'A neighbour',
+            isHost: drop.hostUserId === userId,
             areaName: drop.areaName,
             maxUses: drop.maxUses,
             uses: drop.codes.reduce((sum, c) => sum + c.uses, 0),
