@@ -23,6 +23,8 @@ import businessReferralRouter from './routes/businessReferral';
 import businessClaimRouter from './routes/businessClaim';
 import claimLinkRouter from './routes/claimLink';
 import joinLinkRouter from './routes/joinLink';
+import loopRouter from './routes/loop';
+import loopLinkRouter from './routes/loopLink';
 import { authenticateApiKey } from './middleware/auth';
 import { createMcpRouter } from './mcp/route';
 
@@ -69,6 +71,7 @@ app.use('/media', express.static(mediaRoot));
 app.use('/ping', pingRouter);
 app.use('/claim', claimLinkRouter);
 app.use('/join', joinLinkRouter);
+app.use('/loop', loopLinkRouter);
 app.use('/seller', sellerRouter);
 app.use('/product', productRouter);
 app.use('/api/orders', orderRouter);
@@ -83,6 +86,7 @@ app.use('/api/media', mediaRouter);
 app.use('/api/addresses', addressRouter);
 app.use('/api/business-referrals', businessReferralRouter);
 app.use('/api/business-claims', businessClaimRouter);
+app.use('/api/loop', loopRouter);
 app.use('/mcp', authenticateApiKey, createMcpRouter(app));
 
 app.use(

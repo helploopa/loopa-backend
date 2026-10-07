@@ -29,6 +29,8 @@ model User {
   chatsAsParticipant2            Chat[]        @relation("ChatParticipant2")
   sentMessages                   Message[]
   referredBusinesses             Referbusiness[]
+  loopMember                     LoopMember?
+  loopInviteCodes                LoopInviteCode[]
   createdAt                      DateTime      @default(now())
   updatedAt                      DateTime      @updatedAt
 }
@@ -374,4 +376,63 @@ model BusinessClaim {
 
   @@index([businessId])
   @@index([userId])
+}
+
+// A user's place in the neighbour-invite loop. Coordinates are snapped to a ~0.7 mile grid
+// so a loop never reveals a home address.
+model LoopMember {
+  userId          String    @id
+  user            User      @relation(fields: [userId], references: [id])
+  areaName        String?
+  latitude        Float?
+  longitude       Float?
+  inviterId       String?
+  invitedByCode   String?
+  rootDropId      String?
+  depth           Int       @default(0)
+  distanceMiles   Float?
+  withinRadius    Boolean?
+  joinedLoopAt    DateTime?
+  rewardsEligible Boolean   @default(false)
+  rewardsId       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([inviterId])
+  @@index([rootDropId])
+}
+
+model LoopDrop {
+  id         String           @id @default(uuid())
+  name       String
+  hostUserId String
+  areaName   String
+  latitude   Float
+  longitude  Float
+  maxUses    Int              @default(100)
+  codes      LoopInviteCode[]
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+}
+
+// Invitees' phone numbers and emails are never stored — the code is the only link between
+// an inviter and the neighbour who redeems it.
+model LoopInviteCode {
+  code             String    @id
+  kind             String // seed, personal
+  ownerId          String
+  owner            User      @relation(fields: [ownerId], references: [id])
+  dropId           String?
+  drop             LoopDrop? @relation(fields: [dropId], references: [id])
+  channel          String? // sms, email, whatsapp, share
+  maxUses          Int       @default(1)
+  uses             Int       @default(0)
+  status           String    @default("sent") // sent, redeemed, cancelled
+  redeemedByUserId String?
+  redeemedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([ownerId])
+  @@index([dropId])
 }

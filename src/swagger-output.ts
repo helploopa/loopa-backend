@@ -851,6 +851,10 @@ export const swaggerSpec = {
                   "contactEmail": {
                     "type": "string",
                     "description": "Contact email for unclaimed business outreach (API key auth only)"
+                  },
+                  "referralId": {
+                    "type": "string",
+                    "description": "Referral the owner arrived from (JWT auth only) — marks it \"onboarded\" and links it to the new business"
                   }
                 }
               }
@@ -1088,7 +1092,7 @@ export const swaggerSpec = {
     "/api/businesses/{id}/claim": {
       "post": {
         "summary": "Claim an unclaimed business",
-        "description": "Links the authenticated user to an orphan (unclaimed) business, transitioning it to \"draft\" status. The user must not already own a business.",
+        "description": "Links the authenticated user to an orphan (unclaimed) business, transitioning it to \"draft\" status. The user must not already own a business, and must have an approved business claim (see /api/business-claims) for this business.",
         "security": [
           {
             "bearerAuth": []
@@ -1107,6 +1111,9 @@ export const swaggerSpec = {
         "responses": {
           "200": {
             "description": "Business claimed — now in draft status"
+          },
+          "403": {
+            "description": "No approved business claim for this user and business"
           },
           "404": {
             "description": "Business not found"
@@ -1206,10 +1213,216 @@ export const swaggerSpec = {
         }
       }
     },
+    "/api/business-claims": {
+      "post": {
+        "summary": "Create a business claim record (service only)",
+        "description": "Called by n8n when claim verification starts. Requires the x-api-key service token.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "source",
+                  "businessId",
+                  "userId",
+                  "userEmail"
+                ],
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "businessId": {
+                    "type": "string"
+                  },
+                  "userId": {
+                    "type": "string"
+                  },
+                  "userEmail": {
+                    "type": "string"
+                  },
+                  "userPhone": {
+                    "type": "string"
+                  },
+                  "businessName": {
+                    "type": "string"
+                  },
+                  "businessWebsite": {
+                    "type": "string"
+                  },
+                  "emailOtpHash": {
+                    "type": "string"
+                  },
+                  "emailOtpExpiresAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "emailOtpAttempts": {
+                    "type": "integer",
+                    "default": 0
+                  },
+                  "emailVerified": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "phoneVerified": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending_verification",
+                      "approved",
+                      "rejected",
+                      "expired",
+                      "cancelled"
+                    ],
+                    "default": "pending_verification"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Claim created — returns { claimId, status }"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          }
+        }
+      }
+    },
+    "/api/business-claims/{claimId}": {
+      "get": {
+        "summary": "Get a business claim record (service only)",
+        "description": "Returns the full claim record, including the OTP hash and expiry. Requires the x-api-key service token.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claimId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The claim record with claimId"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Claim not found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Partially update a business claim (service only)",
+        "description": "Updates verification state — e.g. emailVerified, emailOtpAttempts, phoneVerified, a resent OTP (emailOtpHash, emailOtpExpiresAt, emailOtpAttempts), or status. source, businessId and userId cannot be changed. Requires the x-api-key service token.\n",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claimId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userEmail": {
+                    "type": "string"
+                  },
+                  "userPhone": {
+                    "type": "string"
+                  },
+                  "businessName": {
+                    "type": "string"
+                  },
+                  "businessWebsite": {
+                    "type": "string"
+                  },
+                  "emailOtpHash": {
+                    "type": "string"
+                  },
+                  "emailOtpExpiresAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "emailOtpAttempts": {
+                    "type": "integer"
+                  },
+                  "emailVerified": {
+                    "type": "boolean"
+                  },
+                  "phoneVerified": {
+                    "type": "boolean"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending_verification",
+                      "approved",
+                      "rejected",
+                      "expired",
+                      "cancelled"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated claim record with claimId"
+          },
+          "400": {
+            "description": "Validation error (including unknown or immutable fields)"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Claim not found"
+          }
+        }
+      }
+    },
     "/api/business-referrals": {
       "post": {
         "summary": "Refer a neighbour business",
-        "description": "Lets a customer refer a business they know. Either `businessName` or `businessUrl` must be provided. The referring user is taken from the bearer token.\n",
+        "description": "Lets a customer refer a business they know. Either `businessName` or `businessUrl` must be provided. The referring user is taken from the bearer token. Referrals with a website are handed to the n8n onboarding workflow, which verifies the site, creates the unclaimed business and emails the owner a claim link; referrals without one are sent as an invite email linking to /join. A user can refer at most 10 businesses a day, and an email already contacted in the last 30 days is saved with status \"duplicate\" without being emailed again.\n",
         "security": [
           {
             "bearerAuth": []
@@ -1222,16 +1435,15 @@ export const swaggerSpec = {
               "schema": {
                 "type": "object",
                 "required": [
-                  "email",
-                  "phone",
-                  "zipcode"
+                  "email"
                 ],
                 "properties": {
                   "businessName": {
                     "type": "string"
                   },
                   "businessUrl": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Scheme optional — \"www.example.com\" is normalised to https://"
                   },
                   "email": {
                     "type": "string"
@@ -1257,8 +1469,71 @@ export const swaggerSpec = {
           "401": {
             "description": "Unauthorized"
           },
+          "429": {
+            "description": "Daily referral limit reached"
+          },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/business-referrals/{id}": {
+      "patch": {
+        "summary": "Update a referral's status (service only)",
+        "description": "Called by the n8n onboarding workflow, e.g. to mark a referral \"contacted\" once the invite email is sent. Requires the x-api-key service token.",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "contacted",
+                      "onboarded",
+                      "rejected",
+                      "duplicate"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated referral"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Referral not found"
           }
         }
       }
@@ -1494,6 +1769,390 @@ export const swaggerSpec = {
           },
           "404": {
             "description": "Chat not found"
+          }
+        }
+      }
+    },
+    "/claim/{businessId}": {
+      "get": {
+        "summary": "Claim-business link landing page",
+        "description": "Public https landing page used in claim emails (mail apps like Gmail don't linkify custom schemes). Opens loopa://claim/{businessId} in the app while the business is unclaimed; once it has been claimed the link is disabled and shows a notice instead.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "businessId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML page that hands off to the Loopa app"
+          },
+          "404": {
+            "description": "Unknown or malformed business id"
+          },
+          "410": {
+            "description": "Business already claimed — link disabled"
+          }
+        }
+      }
+    },
+    "/join": {
+      "get": {
+        "summary": "Referral invite landing page",
+        "description": "Public https landing page linked from referral invite emails. Opens loopa://join?referralId={referralId} so the owner can sign up and add their business; once the referral has been used to add a business the link is disabled.",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "referralId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML page that hands off to the Loopa app"
+          },
+          "404": {
+            "description": "Unknown or malformed referral id"
+          },
+          "410": {
+            "description": "Business already added from this invite — link disabled"
+          }
+        }
+      }
+    },
+    "/api/loop/me": {
+      "get": {
+        "summary": "Get my neighbour loop",
+        "description": "Returns the caller's loop: invites used (20 for life), neighbours who joined and the neighbours they brought in, pending invites, and the drop the loop traces back to. Pass the caller's neighbourhood to set or refresh their loop's centre; it is snapped to a ~0.7 mile grid and never stored precisely. Pending invites carry no name — the app keeps who an invite went to on the device.\n",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "latitude",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "longitude",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "areaName",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's loop"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "409": {
+            "description": "AREA_REQUIRED — no neighbourhood set yet"
+          }
+        }
+      }
+    },
+    "/api/loop/invites": {
+      "post": {
+        "summary": "Create a personal loop invite",
+        "description": "Uses one of the caller's 20 lifetime invites and returns a single-use code and link. The app sends the link from the user's own phone (SMS, email, WhatsApp or share sheet), so no recipient details are sent to or stored by Loopa. If the user cancels before sending, the app calls DELETE /api/loop/invites/{code} to hand the invite back.\n",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "channel"
+                ],
+                "properties": {
+                  "channel": {
+                    "type": "string",
+                    "enum": [
+                      "sms",
+                      "email",
+                      "whatsapp",
+                      "share"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{ code, link, channel }"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "NO_INVITES_LEFT — all 20 invites used"
+          },
+          "409": {
+            "description": "AREA_REQUIRED, or TRY_AGAIN when two invites raced for the last slot"
+          },
+          "429": {
+            "description": "Too many invites in the last hour"
+          }
+        }
+      }
+    },
+    "/api/loop/invites/{code}": {
+      "delete": {
+        "summary": "Cancel an unused loop invite",
+        "description": "Returns the invite to the caller's allowance. Redeemed invites can't be cancelled.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Invite cancelled"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Invite not found or already redeemed"
+          }
+        }
+      }
+    },
+    "/api/loop/codes/{code}": {
+      "get": {
+        "summary": "Preview a loop invite code",
+        "description": "Public. Tells the invite landing screen whether a code is open, full (a seed drop with all spots claimed), used, or invalid. Only the inviter's first name is returned.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ code, kind, status, inviterName, areaName, dropName, maxUses, uses }"
+          },
+          "429": {
+            "description": "Too many lookups"
+          }
+        }
+      }
+    },
+    "/api/loop/codes/{code}/redeem": {
+      "post": {
+        "summary": "Join a loop with an invite code",
+        "description": "Claims a spot on the code (atomically — a 100-spot drop never admits a 101st) and adds the caller to the inviter's loop. The caller's neighbourhood is compared with the inviter's (or the drop's area for seed codes); joiners more than 15 miles away still join Loopa but don't grow the loop. A user can only join one loop.\n",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "latitude",
+                  "longitude",
+                  "areaName"
+                ],
+                "properties": {
+                  "latitude": {
+                    "type": "number"
+                  },
+                  "longitude": {
+                    "type": "number"
+                  },
+                  "areaName": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "{ inviterId, withinRadius, distanceMiles, depth }"
+          },
+          "400": {
+            "description": "Validation error, or OWN_INVITE"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "INVITE_NOT_FOUND"
+          },
+          "409": {
+            "description": "ALREADY_IN_LOOP, DROP_FULL or INVITE_USED"
+          }
+        }
+      }
+    },
+    "/api/loop/drops": {
+      "post": {
+        "summary": "Create a loop drop with a seed code (service only)",
+        "description": "Creates a drop hosted by an existing user (e.g. a local influencer) and a public seed code with `maxUses` spots (default 100). The host becomes the root of the drop's loop. Requires the x-api-key service token.\n",
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "hostUserId",
+                  "latitude",
+                  "longitude",
+                  "areaName"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "Rocklin drop"
+                  },
+                  "hostUserId": {
+                    "type": "string"
+                  },
+                  "latitude": {
+                    "type": "number"
+                  },
+                  "longitude": {
+                    "type": "number"
+                  },
+                  "areaName": {
+                    "type": "string"
+                  },
+                  "maxUses": {
+                    "type": "integer",
+                    "default": 100
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "Optional custom seed code",
+                    "e.g. MAYAMAKES": null
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{ drop, code, link }"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "404": {
+            "description": "Host user not found"
+          },
+          "409": {
+            "description": "CODE_TAKEN, or the host already belongs to a loop"
+          }
+        }
+      }
+    },
+    "/loop/{code}": {
+      "get": {
+        "summary": "Loop invite landing page",
+        "description": "Public https landing page for loop invite links sent by text, email or WhatsApp (those apps don't linkify custom schemes). Opens loopa://loop/{code} so the neighbour can join the loop in the app; full drops and used invites show a notice instead.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML page that hands off to the Loopa app"
+          },
+          "404": {
+            "description": "Unknown or malformed code"
+          },
+          "410": {
+            "description": "Drop full or invite already used"
           }
         }
       }
