@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../context';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { geocodeAddress } from '../services/geocodingService';
-import { formatBusiness } from './businessApi';
+import { formatBusiness, deliveryZipcodesSchema } from './businessApi';
 
 const router = Router();
 
@@ -19,6 +19,14 @@ const enrollSchema = z.object({
   city: z.string().trim().max(100).optional(),
   state: z.string().trim().max(100).optional(),
   zipcode: z.string().trim().max(20).optional(),
+  deliveryZipcodes: deliveryZipcodesSchema.optional(),
+  // Lead contact details, stored in BusinessLead
+  website: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() && !/^https?:\/\//i.test(v.trim()) ? `https://${v.trim()}` : v),
+    z.string().trim().url('website must be a valid URL').max(500).optional()
+  ),
+  email: z.string().trim().email('email must be a valid email address').max(200).optional(),
+  phone: z.string().trim().min(7, 'phone is too short').max(30).optional(),
 });
 
 const SELLER_STATUSES = ['unclaimed', 'draft', 'review', 'submitted', 'active'] as const;
@@ -26,6 +34,10 @@ const SELLER_STATUSES = ['unclaimed', 'draft', 'review', 'submitted', 'active'] 
 const listQuerySchema = z.object({
   status: z.enum(SELLER_STATUSES).optional(),
 });
+
+function formatLead(lead: { website: string | null; email: string | null; phone: string | null } | null) {
+  return lead ? { website: lead.website, email: lead.email, phone: lead.phone } : null;
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // GET /api/admin/businesses  — list businesses, newest first
@@ -46,7 +58,7 @@ const listQuerySchema = z.object({
  *           enum: [unclaimed, draft, review, submitted, active]
  *     responses:
  *       200:
- *         description: Up to 200 businesses, newest first
+ *         description: Up to 200 businesses, newest first. Each includes a `lead` object (website, email, phone) or null.
  *       403:
  *         description: Signed-in user is not an admin
  */
@@ -62,8 +74,9 @@ router.get('/businesses', async (req: Request, res: Response): Promise<void> => 
       where: parsed.data.status ? { status: parsed.data.status } : {},
       orderBy: { createdAt: 'desc' },
       take: 200,
+      include: { lead: true },
     });
-    res.json(sellers.map(formatBusiness));
+    res.json(sellers.map((s) => ({ ...formatBusiness(s), lead: formatLead(s.lead) })));
   } catch (err) {
     console.error('Error listing businesses for admin:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Internal server error' });
@@ -81,7 +94,8 @@ router.get('/businesses', async (req: Request, res: Response): Promise<void> => 
  *     description: |
  *       Creates an orphan business with status "unclaimed" and no linked user. The owner takes it
  *       over later through the /claim/{businessId} link. City/state/zipcode are geocoded when
- *       possible; if geocoding fails the business is still created, at 0,0.
+ *       possible; if geocoding fails the business is still created, at 0,0. The website and contact
+ *       email/phone are saved as a BusinessLead linked to the business.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -99,6 +113,10 @@ router.get('/businesses', async (req: Request, res: Response): Promise<void> => 
  *               city: { type: string }
  *               state: { type: string }
  *               zipcode: { type: string }
+ *               deliveryZipcodes: { type: array, items: { type: string }, description: 'Zip codes the business delivers to' }
+ *               website: { type: string, description: 'https:// is added if missing' }
+ *               email: { type: string }
+ *               phone: { type: string }
  *     responses:
  *       201:
  *         description: Unclaimed business created
@@ -114,7 +132,8 @@ router.post('/businesses', async (req: Request, res: Response): Promise<void> =>
     return;
   }
 
-  const { name, tagline, serviceType, categories, city, state, zipcode } = parsed.data;
+  const { name, tagline, serviceType, categories, city, state, zipcode, deliveryZipcodes, website, email, phone } =
+    parsed.data;
 
   let latitude = 0;
   let longitude = 0;
@@ -141,12 +160,22 @@ router.post('/businesses', async (req: Request, res: Response): Promise<void> =>
         city: city ?? null,
         state: state ?? null,
         zipcode: zipcode ?? null,
+        ...(deliveryZipcodes?.length && { delivery: true, deliveryZipcodes }),
         serviceType: serviceType ?? null,
         categories: categories ?? [],
         status: 'unclaimed',
+        lead: {
+          create: {
+            website: website ?? null,
+            email: email ?? null,
+            phone: phone ?? null,
+            enrolledByUserId: (req.user?.userId as string) ?? null,
+          },
+        },
       },
+      include: { lead: true },
     });
-    res.status(201).json(formatBusiness(seller));
+    res.status(201).json({ ...formatBusiness(seller), lead: formatLead(seller.lead) });
   } catch (err) {
     console.error('Error enrolling business:', err);
     res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Internal server error' });

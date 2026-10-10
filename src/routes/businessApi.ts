@@ -21,6 +21,12 @@ const upload = multer({
 
 const LICENSE_VALUES = ['yes', 'no', 'not_required'] as const;
 
+/** US zip codes (5-digit or ZIP+4), normalized to 5 digits and de-duplicated. */
+export const deliveryZipcodesSchema = z
+  .array(z.string().trim().regex(/^\d{5}(-\d{4})?$/, 'deliveryZipcodes must be US zip codes like 78701'))
+  .max(200)
+  .transform((zips) => [...new Set(zips.map((z) => z.slice(0, 5)))]);
+
 /**
  * If value is a base64 data-URL, upload to Firebase and return the public URL.
  * If value is already an https URL, return as-is.
@@ -70,6 +76,7 @@ export function formatBusiness(seller: any) {
     delivery: {
       available: seller.delivery ?? false,
       radiusMiles: seller.deliveryRadiusMiles ?? null,
+      zipcodes: seller.deliveryZipcodes ?? [],
     },
     sampling: {
       available: (seller.samplesPerMonth ?? 0) > 0,
@@ -123,6 +130,7 @@ const step2Schema = z.object({
     .object({
       available: z.boolean(),
       radiusMiles: z.number().nonnegative().optional(),
+      zipcodes: deliveryZipcodesSchema.optional(),
     })
     .optional(),
   sampling: z
@@ -440,6 +448,11 @@ router.get('/:id', authenticateApiKeyOrJWT, async (req: Request, res: Response):
  *                     type: boolean
  *                   radiusMiles:
  *                     type: number
+ *                   zipcodes:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                     description: Zip codes the business delivers to. Omit to keep the current list.
  *               sampling:
  *                 type: object
  *                 properties:
@@ -496,6 +509,7 @@ router.patch('/:id/details', authenticateApiKeyOrJWT, async (req: Request, res: 
         ...(delivery !== undefined && {
           delivery: delivery.available,
           deliveryRadiusMiles: delivery.radiusMiles ?? null,
+          ...(delivery.zipcodes !== undefined && { deliveryZipcodes: delivery.zipcodes }),
         }),
         ...(sampling !== undefined && {
           samplesPerMonth: sampling.available ? (sampling.samplesPerMonth ?? 1) : 0,
@@ -824,6 +838,7 @@ router.patch('/:id', authenticateApiKeyOrJWT, async (req: Request, res: Response
         ...(delivery !== undefined && {
           delivery: delivery.available,
           deliveryRadiusMiles: delivery.radiusMiles ?? null,
+          ...(delivery.zipcodes !== undefined && { deliveryZipcodes: delivery.zipcodes }),
         }),
         ...(sampling !== undefined && {
           samplesPerMonth: sampling.available ? (sampling.samplesPerMonth ?? 1) : 0,

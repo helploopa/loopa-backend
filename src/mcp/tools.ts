@@ -31,7 +31,9 @@ const featuresShape = z
   );
 
 const licenseShape = z.enum(['yes', 'no', 'not_required']).optional();
-const deliveryShape = z.object({ available: z.boolean(), radiusMiles: z.number().optional() }).optional();
+const deliveryShape = z
+  .object({ available: z.boolean(), radiusMiles: z.number().optional(), zipcodes: z.array(z.string()).optional() })
+  .optional();
 const samplingShape = z.object({ available: z.boolean(), samplesPerMonth: z.number().optional() }).optional();
 
 /**
