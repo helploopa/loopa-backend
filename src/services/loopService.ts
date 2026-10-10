@@ -10,6 +10,8 @@ export const LOOP_INVITE_CHANNELS = ['sms', 'email', 'whatsapp', 'share'] as con
 // drop goes viral.
 const MAX_REACH_DEPTH = 12;
 const MAX_REACH_NODES = 50_000;
+// The network is drawn node by node on the map, so it's capped far lower than reach.
+const MAX_NETWORK_NODES = 500;
 
 const APP_URL = (process.env.APP_URL ?? 'http://localhost:4000').replace(/\/$/, '');
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -88,6 +90,28 @@ export async function countInvitesUsed(userId: string): Promise<number> {
   return prisma.loopInviteCode.count({
     where: { ownerId: userId, kind: 'personal', status: { in: ['sent', 'redeemed'] } },
   });
+}
+
+// Everyone below the caller's direct invites, level by level (depth 2 = invited by a
+// neighbour the caller invited). Only first names are loaded — the caller never invited
+// these people themselves.
+export async function loadLoopNetwork(directInviteeIds: string[]) {
+  const loadLevel = (inviterIds: string[], take: number) =>
+    prisma.loopMember.findMany({
+      where: { inviterId: { in: inviterIds }, withinRadius: true },
+      include: { user: { select: { firstName: true, name: true } } },
+      orderBy: { joinedLoopAt: 'asc' },
+      take,
+    });
+
+  const network: (Awaited<ReturnType<typeof loadLevel>>[number] & { depth: number })[] = [];
+  let frontier = directInviteeIds;
+  for (let depth = 2; depth <= MAX_REACH_DEPTH && frontier.length > 0 && network.length < MAX_NETWORK_NODES; depth++) {
+    const children = await loadLevel(frontier, MAX_NETWORK_NODES - network.length);
+    network.push(...children.map((member) => ({ ...member, depth })));
+    frontier = children.map((c) => c.userId);
+  }
+  return network;
 }
 
 export async function countReach(userId: string): Promise<number> {

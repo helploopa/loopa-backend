@@ -15,6 +15,7 @@ import {
   firstNameOf,
   generateLoopCode,
   initialsFor,
+  loadLoopNetwork,
   loopInviteLink,
   milesBetween,
   normaliseLoopCode,
@@ -89,6 +90,8 @@ const round1 = (value: number) => Math.round(value * 10) / 10;
  *     description: >
  *       Returns the caller's loop: invites used (20 for life), neighbours who joined and the
  *       neighbours they brought in, pending invites, and the drop the loop traces back to.
+ *       `network` lists everyone further down the invite tree (depth 2 and deeper) with their
+ *       inviter's id, first name only, and neighbourhood, so the app can draw the whole loop.
  *       Pass the caller's neighbourhood to set or refresh their loop's centre; it is snapped
  *       to a ~0.7 mile grid and never stored precisely. Pending invites carry no name — the
  *       app keeps who an invite went to on the device.
@@ -153,12 +156,19 @@ router.get('/me', authenticateToken, async (req: Request, res: Response): Promis
       countReach(userId),
     ]);
 
-    const branches = joinedMembers.length
-      ? await prisma.loopMember.findMany({
-          where: { inviterId: { in: joinedMembers.map((m) => m.userId) }, withinRadius: true },
-          select: { inviterId: true, latitude: true, longitude: true },
-        })
-      : [];
+    const networkMembers = await loadLoopNetwork(joinedMembers.map((m) => m.userId));
+    const network = networkMembers.map((m) => {
+      const name = firstNameOf(m.user);
+      return {
+        id: m.userId,
+        inviterId: m.inviterId as string,
+        depth: m.depth,
+        name,
+        initials: initialsFor(name),
+        joinedAt: m.joinedLoopAt ?? m.createdAt,
+        area: m.latitude !== null && m.longitude !== null ? { latitude: m.latitude, longitude: m.longitude } : null,
+      };
+    });
 
     const drop = member.rootDropId
       ? await prisma.loopDrop.findUnique({
@@ -187,9 +197,7 @@ router.get('/me', authenticateToken, async (req: Request, res: Response): Promis
         area,
         distanceMiles: m.distanceMiles,
         withinRadius: m.withinRadius,
-        branches: branches
-          .filter((b) => b.inviterId === m.userId && b.latitude !== null && b.longitude !== null)
-          .map((b) => ({ latitude: b.latitude as number, longitude: b.longitude as number })),
+        branches: network.flatMap((n) => (n.inviterId === m.userId && n.area ? [n.area] : [])),
       };
     });
 
@@ -231,6 +239,7 @@ router.get('/me', authenticateToken, async (req: Request, res: Response): Promis
           }
         : null,
       neighbours: [...joined, ...pending],
+      network,
     });
   } catch (error) {
     console.error('Error loading loop:', error);

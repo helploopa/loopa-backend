@@ -449,6 +449,7 @@ model BusinessLead {
   website          String?
   email            String?
   phone            String?
+  instagram        String? // handle without the leading @
   enrolledByUserId String?
   enrolledBy       User?    @relation(fields: [enrolledByUserId], references: [id], onDelete: SetNull)
   createdAt        DateTime @default(now())

@@ -27,6 +27,17 @@ const enrollSchema = z.object({
   ),
   email: z.string().trim().email('email must be a valid email address').max(200).optional(),
   phone: z.string().trim().min(7, 'phone is too short').max(30).optional(),
+  // Accepts "@handle", "handle" or an instagram.com profile URL; stores the bare handle
+  instagram: z.preprocess(
+    (v) =>
+      typeof v === 'string'
+        ? v.trim().replace(/^(https?:\/\/)?(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '')
+        : v,
+    z
+      .string()
+      .regex(/^[A-Za-z0-9._]{1,30}$/, 'instagram must be a valid Instagram handle')
+      .optional()
+  ),
 });
 
 const SELLER_STATUSES = ['unclaimed', 'draft', 'review', 'submitted', 'active'] as const;
@@ -35,8 +46,10 @@ const listQuerySchema = z.object({
   status: z.enum(SELLER_STATUSES).optional(),
 });
 
-function formatLead(lead: { website: string | null; email: string | null; phone: string | null } | null) {
-  return lead ? { website: lead.website, email: lead.email, phone: lead.phone } : null;
+type LeadContact = { website: string | null; email: string | null; phone: string | null; instagram: string | null };
+
+function formatLead(lead: LeadContact | null) {
+  return lead ? { website: lead.website, email: lead.email, phone: lead.phone, instagram: lead.instagram } : null;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -58,7 +71,7 @@ function formatLead(lead: { website: string | null; email: string | null; phone:
  *           enum: [unclaimed, draft, review, submitted, active]
  *     responses:
  *       200:
- *         description: Up to 200 businesses, newest first. Each includes a `lead` object (website, email, phone) or null.
+ *         description: Up to 200 businesses, newest first. Each includes a `lead` object (website, email, phone, instagram) or null.
  *       403:
  *         description: Signed-in user is not an admin
  */
@@ -94,8 +107,8 @@ router.get('/businesses', async (req: Request, res: Response): Promise<void> => 
  *     description: |
  *       Creates an orphan business with status "unclaimed" and no linked user. The owner takes it
  *       over later through the /claim/{businessId} link. City/state/zipcode are geocoded when
- *       possible; if geocoding fails the business is still created, at 0,0. The website and contact
- *       email/phone are saved as a BusinessLead linked to the business.
+ *       possible; if geocoding fails the business is still created, at 0,0. The website, contact
+ *       email/phone and Instagram handle are saved as a BusinessLead linked to the business.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -117,6 +130,7 @@ router.get('/businesses', async (req: Request, res: Response): Promise<void> => 
  *               website: { type: string, description: 'https:// is added if missing' }
  *               email: { type: string }
  *               phone: { type: string }
+ *               instagram: { type: string, description: 'Handle, @handle or instagram.com URL; stored without the @' }
  *     responses:
  *       201:
  *         description: Unclaimed business created
@@ -132,7 +146,7 @@ router.post('/businesses', async (req: Request, res: Response): Promise<void> =>
     return;
   }
 
-  const { name, tagline, serviceType, categories, city, state, zipcode, deliveryZipcodes, website, email, phone } =
+  const { name, tagline, serviceType, categories, city, state, zipcode, deliveryZipcodes, website, email, phone, instagram } =
     parsed.data;
 
   let latitude = 0;
@@ -169,6 +183,7 @@ router.post('/businesses', async (req: Request, res: Response): Promise<void> =>
             website: website ?? null,
             email: email ?? null,
             phone: phone ?? null,
+            instagram: instagram ?? null,
             enrolledByUserId: (req.user?.userId as string) ?? null,
           },
         },
