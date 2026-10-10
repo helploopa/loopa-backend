@@ -25,6 +25,7 @@ import claimLinkRouter from './routes/claimLink';
 import joinLinkRouter from './routes/joinLink';
 import loopRouter from './routes/loop';
 import loopLinkRouter from './routes/loopLink';
+import adminRouter from './routes/admin';
 import { authenticateApiKey } from './middleware/auth';
 import { createMcpRouter } from './mcp/route';
 
@@ -87,6 +88,7 @@ app.use('/api/addresses', addressRouter);
 app.use('/api/business-referrals', businessReferralRouter);
 app.use('/api/business-claims', businessClaimRouter);
 app.use('/api/loop', loopRouter);
+app.use('/api/admin', adminRouter);
 app.use('/mcp', authenticateApiKey, createMcpRouter(app));
 
 app.use(

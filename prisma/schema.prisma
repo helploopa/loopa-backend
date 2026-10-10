@@ -21,6 +21,7 @@ model User {
   emailVerified                  Boolean       @default(false)
   emailVerificationToken         String?       @unique
   emailVerificationTokenExpiry   DateTime?
+  isAdmin                        Boolean       @default(false) // portal admins can enroll unclaimed businesses
   seller                         Seller?
   orders                         Order[]
   claimedSamples                 Sample[]

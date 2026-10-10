@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { isRevoked } from './tokenBlocklist';
+import { prisma } from '../context';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'development-mock-secret';
 
@@ -61,4 +62,28 @@ export const authenticateApiKeyOrJWT = (req: Request, res: Response, next: NextF
   }
 
   authenticateToken(req, res, next);
+};
+
+/**
+ * Use after authenticateToken. Checks isAdmin in the database rather than trusting the JWT's
+ * role claim, so revoking admin access takes effect without waiting for the token to expire.
+ */
+export const requireAdmin = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const userId = req.user?.userId as string | undefined;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { isAdmin: true } });
+    if (!user?.isAdmin) {
+      res.status(403).json({ error: 'FORBIDDEN', message: 'Admin access required' });
+      return;
+    }
+    next();
+  } catch (err) {
+    console.error('Error checking admin access:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'Internal server error' });
+  }
 };

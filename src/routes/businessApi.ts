@@ -48,7 +48,7 @@ async function resolveImageArray(values: string[] | undefined, prefix: string): 
 }
 
 /** Shape returned by all /api/businesses endpoints */
-function formatBusiness(seller: any) {
+export function formatBusiness(seller: any) {
   return {
     id: seller.id,
     status: seller.status,

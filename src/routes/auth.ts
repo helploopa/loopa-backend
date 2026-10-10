@@ -8,6 +8,20 @@ import { authenticateToken } from '../middleware/auth';
 import { revokeToken } from '../middleware/tokenBlocklist';
 
 const router = Router();
+
+type Role = 'Admin' | 'Seller' | 'Customer';
+
+const REDIRECT_FOR_ROLE: Record<Role, string> = {
+  Admin: '/admin/sellers',
+  Seller: '/dashboard',
+  Customer: '/discover',
+};
+
+function roleFor(user: { isAdmin: boolean; seller: unknown }): Role {
+  if (user.isAdmin) return 'Admin';
+  return user.seller ? 'Seller' : 'Customer';
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || 'development-mock-secret';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -330,7 +344,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const role = user.seller ? 'Seller' : 'Customer';
+    const role = roleFor(user);
     const payload = {
       userId: user.id,
       email: user.email,
@@ -350,7 +364,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         role,
         ...(user.seller ? { sellerId: user.seller.id } : {}),
       },
-      redirect: role === 'Customer' ? '/discover' : '/dashboard',
+      redirect: REDIRECT_FOR_ROLE[role],
     });
   } catch (error) {
     console.error('Error in login:', error);
@@ -466,7 +480,7 @@ router.post('/google', async (req: Request, res: Response): Promise<void> => {
       });
     }
 
-    const role = user.seller ? 'Seller' : 'Customer';
+    const role = roleFor(user);
     const payload = {
       userId: user.id,
       email: user.email,
@@ -487,7 +501,7 @@ router.post('/google', async (req: Request, res: Response): Promise<void> => {
         role,
         ...(user.seller ? { sellerId: user.seller.id } : {}),
       },
-      redirect: role === 'Customer' ? '/discover' : '/dashboard',
+      redirect: REDIRECT_FOR_ROLE[role],
     });
   } catch (err) {
     console.error('Error in /auth/google:', err);
