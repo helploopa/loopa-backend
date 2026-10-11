@@ -290,7 +290,7 @@ export const resolvers = {
     mapClusters: async (_parent: any, args: { input: any }, context: any) => {
       const { lat: latitude, lng: longitude, zoom = 10, bounds, category, radiusKm } = args.input;
 
-      const sellers = await context.prisma.seller.findMany({
+      const sellerRows = await context.prisma.seller.findMany({
         include: {
           products: {
             where: { isActive: true, deletedAt: null },
@@ -308,7 +308,22 @@ export const resolvers = {
             where: { featureKey: 'sampling', enabled: true },
             select: { id: true },
           },
+          addresses: {
+            where: { type: 'business', isActive: true },
+            orderBy: { updatedAt: 'desc' },
+            select: { latitude: true, longitude: true },
+          },
         },
+      });
+
+      // Plot a seller at their business address when one is on file; otherwise keep the
+      // seller-level coordinates, which come from the zip code they operate in.
+      const sellers: typeof sellerRows = sellerRows.map((s: any) => {
+        const address = s.addresses.find(
+          (a: any) =>
+            Number.isFinite(a.latitude) && Number.isFinite(a.longitude) && (a.latitude !== 0 || a.longitude !== 0),
+        );
+        return address ? { ...s, latitude: address.latitude, longitude: address.longitude } : s;
       });
 
       let filteredSellers: typeof sellers = radiusKm
