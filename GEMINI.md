@@ -24,7 +24,7 @@ Loopa Backend is a Node.js API server built with Express and Prisma, using a Pos
 ## Security Considerations
 - Never log sensitive information (tokens, passwords, PII).
 - Always validate and sanitize user input.
-- Use `authenticateToken` middleware for protected routes.
+- Use `authenticateToken` middleware for protected routes. 
 
 ## Key Action Details
 - **Forces new deployments**: When modifying GitHub Actions or ECS Tasks, be aware of what triggers new deployments.
